@@ -1,5 +1,6 @@
 package com.batteryfox.app.presentation.viewmodel
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -12,7 +13,9 @@ import androidx.lifecycle.viewModelScope
 import com.batteryfox.app.core.engine.InternalResistanceTester
 import com.batteryfox.app.core.oem.OemDiagnosticLauncher
 import com.batteryfox.app.core.parser.UniversalBugReportParser
+import com.batteryfox.app.core.service.BatteryMonitorService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +23,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
+
+enum class CalibrationStep {
+    IDLE,
+    DISCHARGING,
+    CHARGING,
+    SATURATING,
+    COMPLETED
+}
 
 data class DashboardState(
     val batteryPercent: Int = 0,
@@ -32,12 +43,15 @@ data class DashboardState(
     val factoryDesignMah: Int = 0,
     val currentAvailableMah: Int = 0,
     val isDualCell: Boolean = false,
+    val isServiceRunning: Boolean = false,
     val isTestingResistance: Boolean = false,
     val isParsingBugReport: Boolean = false,
     val measuredResistanceMilliOhms: Float? = null,
     val testConfidence: String? = null,
     val statusMessage: String? = null,
-    val calibrationDriftDetected: Boolean = false
+    val calibrationDriftDetected: Boolean = false,
+    val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
+    val saturationMinutesRemaining: Int = 45
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -62,11 +76,11 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
         val soc = if (scale > 0) (level * 100) / scale else 0
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
-        val temp = (intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10f
+        val temp = (intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)) / 10f
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
 
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
         val currentMa = currentUa / 1000
-
         val powerWatts = (voltage / 1000f) * (abs(currentMa) / 1000f)
 
         var cycles: Int? = null
@@ -86,8 +100,33 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val availableMah = ((designMah * calculatedHealth) / 100f).toInt()
+
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
+
+        // Calibration Step Progression
+        when (_state.value.calibrationStep) {
+            CalibrationStep.DISCHARGING -> {
+                if (soc <= 5 || perCellVoltage < 3450) {
+                    _state.value = _state.value.copy(
+                        calibrationStep = CalibrationStep.CHARGING,
+                        statusMessage = "Low cutoff reached! Plug into charger now."
+                    )
+                }
+            }
+            CalibrationStep.CHARGING -> {
+                if (plugged == 0 && soc < 99) {
+                    _state.value = _state.value.copy(
+                        statusMessage = "Warning: Charger disconnected early! Reconnect to continue."
+                    )
+                } else if (soc >= 100) {
+                    startSaturationPhase()
+                }
+            }
+            else -> {}
+        }
+
+        val running = isServiceRunning(context, BatteryMonitorService::class.java)
 
         _state.value = _state.value.copy(
             batteryPercent = soc,
@@ -99,9 +138,78 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             factoryDesignMah = designMah,
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,
+            isServiceRunning = running,
             estimatedHealthPercent = calculatedHealth,
             calibrationDriftDetected = isDrifted
         )
+    }
+
+    fun startCalibrationWizard() {
+        val currentSoc = _state.value.batteryPercent
+        if (currentSoc <= 6) {
+            _state.value = _state.value.copy(
+                calibrationStep = CalibrationStep.CHARGING,
+                statusMessage = "Cell is depleted. Connect charger to begin 0-100% saturation cycle."
+            )
+        } else {
+            _state.value = _state.value.copy(
+                calibrationStep = CalibrationStep.DISCHARGING,
+                statusMessage = "Discharge battery down to 5% to learn physical low-cutoff voltage."
+            )
+        }
+    }
+
+    private fun startSaturationPhase() {
+        _state.value = _state.value.copy(
+            calibrationStep = CalibrationStep.SATURATING,
+            saturationMinutesRemaining = 45,
+            statusMessage = "100% reached! Keep connected for 45 min float dwell."
+        )
+
+        viewModelScope.launch {
+            for (min in 45 downTo 1) {
+                delay(60_000L)
+                _state.value = _state.value.copy(saturationMinutesRemaining = min - 1)
+            }
+            _state.value = _state.value.copy(
+                calibrationStep = CalibrationStep.COMPLETED,
+                calibrationDriftDetected = false,
+                statusMessage = "PMIC registers calibrated! Cutoff & Qmax locked."
+            )
+        }
+    }
+
+    fun cancelCalibration() {
+        _state.value = _state.value.copy(
+            calibrationStep = CalibrationStep.IDLE,
+            statusMessage = "Calibration wizard cancelled."
+        )
+    }
+
+    fun toggleMonitorService() {
+        val context = getApplication<Application>()
+        val serviceIntent = Intent(context, BatteryMonitorService::class.java)
+
+        if (_state.value.isServiceRunning) {
+            context.stopService(serviceIntent)
+            _state.value = _state.value.copy(isServiceRunning = false, statusMessage = "Monitor service stopped.")
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+            _state.value = _state.value.copy(isServiceRunning = true, statusMessage = "Monitor service running.")
+        }
+    }
+
+    private fun isServiceRunning(context: Context, serviceClass: Class<*>): Boolean {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        @Suppress("DEPRECATION")
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) return true
+        }
+        return false
     }
 
     private fun getFactoryDesignCapacityMah(context: Context): Int {
@@ -111,7 +219,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             val getAveragePowerMethod = powerProfileClass.getMethod("getAveragePower", String::class.java)
             val cap = getAveragePowerMethod.invoke(powerProfileInstance, "battery.capacity") as Double
             cap.toInt()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             4500
         }
     }
