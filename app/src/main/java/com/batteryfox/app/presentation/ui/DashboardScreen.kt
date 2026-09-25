@@ -32,11 +32,11 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(FoxBackground)
-            .padding(horizontal = 20.dp)
+            .padding(20.dp)
             .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -46,31 +46,16 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painter = painterResource(id = R.drawable.fox),
-                    contentDescription = "Battery Fox Logo",
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
+                    contentDescription = "Logo",
+                    modifier = Modifier.size(44.dp).clip(CircleShape)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text(
-                        text = "Battery Fox",
-                        color = FoxTextPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Hardware Telemetry Engine",
-                        color = FoxTextSecondary,
-                        fontSize = 12.sp
-                    )
+                    Text("Battery Fox", color = FoxTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Hardware Telemetry", color = FoxTextSecondary, fontSize = 12.sp)
                 }
             }
-
-            Surface(
-                color = FoxSurfaceVariant,
-                shape = RoundedCornerShape(20.dp)
-            ) {
+            Surface(color = FoxSurfaceVariant, shape = RoundedCornerShape(20.dp)) {
                 Text(
                     text = "${state.batteryPercent}% SoC",
                     color = FoxElectricGreen,
@@ -81,7 +66,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -89,24 +74,15 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Text("ESTIMATED STATE OF HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "ESTIMATED STATE OF HEALTH",
-                    color = FoxTextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                val formattedHealth = String.format("%.1f", state.estimatedHealthPercent)
-                Text(
-                    text = "$formattedHealth%",
+                    text = "${state.estimatedHealthPercent.toInt()}%",
                     color = FoxTextPrimary,
-                    fontSize = 56.sp,
+                    fontSize = 52.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -119,151 +95,91 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         color = if (state.estimatedHealthPercent >= 80f) FoxElectricGreen else FoxAccentOrange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TelemetryCard(
-                title = "VOLTAGE",
-                value = "${state.voltageMv} mV",
-                modifier = Modifier.weight(1f)
-            )
-            TelemetryCard(
-                title = "TEMPERATURE",
-                value = "${state.temperatureCelsius} °C",
-                modifier = Modifier.weight(1f)
-            )
+            TelemetryCard(title = "VOLTAGE", value = "${state.voltageMv} mV", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "TEMP", value = "${state.temperatureCelsius} °C", modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TelemetryCard(
-                title = "CURRENT",
-                value = "${state.currentMa} mA",
-                modifier = Modifier.weight(1f)
-            )
-            TelemetryCard(
-                title = "CYCLES",
-                value = state.cycleCount?.toString() ?: "Android 14+",
-                modifier = Modifier.weight(1f)
-            )
-        
+            TelemetryCard(title = "CURRENT", value = "${state.currentMa} mA", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
+        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
-        ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                Text(
-                    text = "Active Impedance Calibration",
-                    color = FoxTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                Text("10-Second Impedance Test", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Runs 3 multi-core load pulses to calculate internal cell resistance (R_int) via Ohm's Law.",
-                    color = FoxTextSecondary,
-                    fontSize = 12.sp
-                )
+                Text("Measures internal resistance (R_int) to calculate cell wear.", color = FoxTextSecondary, fontSize = 12.sp)
 
-                state.measuredResistanceMilliOhms?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  resistance ->
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                        Column {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                            Text("Internal Resistance", color = FoxTextSecondary, fontSize = 12.sp)
-                            val formattedRes = String.format("%.1f", resistance)
-                            Text("$formattedRes mO", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        
-                        state.testConfidence?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  conf ->
-                            Surface(
-                                color = FoxSurfaceVariant,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                                Text(
-                                    text = "$conf CONFIDENCE",
-                                    color = FoxAccentOrange,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            
-                        
-                    
-                
-
-                state.testErrorMessage?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  err ->
+                state.measuredResistanceMilliOhms?.let { res ->
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = err, color = Color(0xFFFF5252), fontSize = 12.sp)
-                
+                    Text("Resistance: ${res.toInt()} mO (${state.testConfidence ?: ""} confidence)", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
+                }
+
+                state.testErrorMessage?.let { err ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(err, color = Color(0xFFFF5252), fontSize = 12.sp)
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Button(
-                    onClick = {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  viewModel.runResistanceStressTest() ,
+                    onClick = { viewModel.runResistanceStressTest() },
                     enabled = !state.isTestingResistance,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
-                ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                    if (state.isTestingResistance) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                        CircularProgressIndicator(
-                            color = Color.Black,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Executing Pulses (10s)...", color = Color.Black, fontWeight = FontWeight.Bold)
-                     else {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                        Text("Run 10-Second Health Test", color = Color.Black, fontWeight = FontWeight.Bold)
-                    
-                
-            
-        
+                ) {
+                    Text(
+                        if (state.isTestingResistance) "Testing Pulses..." else "Run 10-Second Health Test",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedButton(
-            onClick = {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  viewModel.launchOemMenu() ,
+            onClick = { viewModel.launchOemMenu() },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = FoxTextPrimary)
-        ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-            Text("Launch OEM Hardware Diagnostic Screen")
-        
+        ) {
+            Text("Launch OEM Hardware Screen")
+        }
 
-        Spacer(modifier = Modifier.height(32.dp))
-    
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
 
-
-Composable
-fun TelemetryCard(title: String, value: String, modifier: Modifier = Modifier) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+@Composable
+fun TelemetryCard(title: String, value: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = FoxSurface)
-    ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-        Column(modifier = Modifier.padding(16.dp)) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-            Text(text = title, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(text = value, color = FoxTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        
-    
-
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(title, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, color = FoxTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
