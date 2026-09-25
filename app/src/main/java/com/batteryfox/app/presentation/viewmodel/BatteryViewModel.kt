@@ -59,7 +59,11 @@ data class DashboardState(
     val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
     val saturationMinutesRemaining: Int = 45,
     val hasUsagePermission: Boolean = false,
-    val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
+    val topHistoricalDrainers: List<AppDrainMetric> = emptyList(),
+    val deviceModelName: String = "",
+    val androidVersionString: String = "",
+    val customOsName: String = "",
+    val factoryLaunchOs: String = ""
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -127,7 +131,16 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val nowMs = System.currentTimeMillis()
         val buildYears = ((nowMs - Build.TIME).toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
         val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
-        val resolvedYears = max(buildYears, cycleDerivedYears).coerceIn(0.5f, 6.0f)
+
+        // True Hardware Launch Detection via ro.product.first_api_level
+        val firstApi = getFirstApiLevel()
+        val launchYears = getEstimatedYearsFromApi(firstApi)
+        val resolvedYears = maxOf(buildYears, cycleDerivedYears, launchYears).coerceIn(0.5f, 8.5f)
+
+        val devModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
+        val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+        val customOs = detectCustomOs()
+        val firstOs = "Android ${getAndroidNameFromApi(firstApi)} (API $firstApi)"
 
         // If cycles exist (Android 14+), calculate wear.
         // If Android <= 13, check saved test or saved bug report. Do NOT default to 100%.
@@ -184,6 +197,10 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,
             batteryTechnology = tech,
+            deviceModelName = devModel,
+            androidVersionString = osVersion,
+            customOsName = customOs,
+            factoryLaunchOs = firstOs,
             isServiceRunning = running,
             hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,
@@ -276,6 +293,72 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             if (serviceClass.name == service.service.className) return true
         }
         return false
+    }
+
+    private fun getFirstApiLevel(): Int {
+        return try {
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
+            val levelStr = getMethod.invoke(null, "ro.product.first_api_level", "0") as String
+            val level = levelStr.toIntOrNull() ?: 0
+            if (level > 0) level else Build.VERSION.SDK_INT
+        } catch (_: Exception) {
+            Build.VERSION.SDK_INT
+        }
+    }
+
+    private fun getEstimatedYearsFromApi(firstApi: Int): Float {
+        // Approximate release date from factory shipping API level
+        val launchEpoch = when (firstApi) {
+            21 -> 1415000000000L // Android 5.0 (Late 2014)
+            22 -> 1425000000000L // Android 5.1 (Early 2015)
+            23 -> 1444000000000L // Android 6.0 (Late 2015)
+            24, 25 -> 1472000000000L // Android 7.0/7.1 (Late 2016)
+            26, 27 -> 1503000000000L // Android 8.0/8.1 (Late 2017)
+            28 -> 1533500000000L // Android 9.0 (Mid 2018)
+            29 -> 1567500000000L // Android 10 (Late 2019 / Early 2020)
+            30 -> 1599500000000L // Android 11 (Late 2020)
+            31, 32 -> 1633500000000L // Android 12 (Late 2021)
+            33 -> 1660500000000L // Android 13 (Late 2022)
+            34 -> 1696400000000L // Android 14 (Late 2023)
+            35 -> 1725300000000L // Android 15 (Late 2024)
+            else -> Build.TIME
+        }
+        val diff = System.currentTimeMillis() - launchEpoch
+        return (diff.toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
+    }
+
+    private fun getAndroidNameFromApi(api: Int): String {
+        return when (api) {
+            26 -> "8.0"; 27 -> "8.1"; 28 -> "9.0"; 29 -> "10"; 30 -> "11"
+            31 -> "12"; 32 -> "12L"; 33 -> "13"; 34 -> "14"; 35 -> "15"
+            else -> api.toString()
+        }
+    }
+
+    private fun detectCustomOs(): String {
+        return try {
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
+
+            val miui = getMethod.invoke(null, "ro.miui.ui.version.name", "") as String
+            if (miui.isNotEmpty()) return "MIUI $miui"
+
+            val hyperOs = getMethod.invoke(null, "ro.mi.os.version.name", "") as String
+            if (hyperOs.isNotEmpty()) return "HyperOS $hyperOs"
+
+            val oplus = getMethod.invoke(null, "ro.build.version.oplusrom", "") as String
+            if (oplus.isNotEmpty()) return "ColorOS $oplus"
+
+            val oneUi = getMethod.invoke(null, "ro.build.version.oneui", "") as String
+            if (oneUi.isNotEmpty()) return "One UI $oneUi"
+
+            if (Build.BRAND.equals("google", ignoreCase = true)) return "Pixel Experience"
+
+            "Stock OS"
+        } catch (_: Exception) {
+            "Android"
+        }
     }
 
     private fun getFactoryDesignCapacityMah(context: Context): Int {
