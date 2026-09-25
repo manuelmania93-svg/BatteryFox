@@ -44,7 +44,7 @@ data class DashboardState(
     val wattage: Float = 0f,
     val cycleCount: Int? = null,
     val yearsActive: Float = 3.5f,
-    val estimatedHealthPercent: Float = 100f,
+    val estimatedHealthPercent: Float? = null,
     val factoryDesignMah: Int = 0,
     val currentAvailableMah: Int = 0,
     val isDualCell: Boolean = false,
@@ -123,14 +123,21 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
         val resolvedYears = max(buildYears, cycleDerivedYears).coerceIn(0.5f, 6.0f)
 
-        val calculatedHealth = preferences.getSavedParsedHealth() ?: if (cycles != null && cycles > 0) {
-            val wear = cycles * 0.0225f
-            max(50f, 100f - wear)
-        } else {
-            _state.value.estimatedHealthPercent
-        }
+        // If cycles exist (Android 14+), calculate wear.
+        // If Android <= 13, check saved test or saved bug report. Do NOT default to 100%.
+        val calculatedHealth = preferences.getSavedParsedHealth() 
+            ?: preferences.getSavedResistance()?.let { r ->
+                // Map saved resistance to health if available
+                if (r <= 70f) 100f else (100f - ((r - 70f) / 110f) * 35f).coerceIn(45f, 100f)
+            }
+            ?: if (cycles != null && cycles > 0) {
+                val wear = cycles * 0.0225f
+                max(50f, 100f - wear)
+            } else {
+                null // Unknown until test is executed
+            }
 
-        val availableMah = preferences.getSavedAvailableMah() ?: ((designMah * calculatedHealth) / 100f).toInt()
+        val availableMah = preferences.getSavedAvailableMah() ?: ((designMah * (calculatedHealth ?: 100f)) / 100f).toInt()
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 

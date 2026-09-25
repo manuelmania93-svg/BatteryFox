@@ -94,8 +94,8 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 Text("HARDWARE STATE OF HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "${state.estimatedHealthPercent.toInt()}%",
-                    color = if (state.estimatedHealthPercent >= 80f) FoxTextPrimary else FoxAccentOrange,
+                    text = if (state.estimatedHealthPercent != null) "${state.estimatedHealthPercent!!.toInt()}%" else "--%",
+                    color = if ((state.estimatedHealthPercent ?: 100f) >= 80f) FoxTextPrimary else FoxAccentOrange,
                     fontSize = 54.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
@@ -110,12 +110,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    color = if (state.estimatedHealthPercent >= 80f) FoxElectricGreen.copy(alpha = 0.15f) else FoxAccentOrange.copy(alpha = 0.15f),
+                    color = if (state.estimatedHealthPercent == null) FoxSurfaceVariant else if (state.estimatedHealthPercent!! >= 80f) FoxElectricGreen.copy(alpha = 0.15f) else FoxAccentOrange.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = if (state.estimatedHealthPercent >= 80f) "HEALTHY CELL" else "AGED (REPLACEMENT RECOMMENDED)",
-                        color = if (state.estimatedHealthPercent >= 80f) FoxElectricGreen else FoxAccentOrange,
+                        text = if (state.estimatedHealthPercent == null) "TEST REQUIRED (ANDROID <14)" else if (state.estimatedHealthPercent!! >= 80f) "HEALTHY CELL" else "AGED (SERVICE RECOMMENDED)",
+                        color = if (state.estimatedHealthPercent == null) FoxTextSecondary else if (state.estimatedHealthPercent!! >= 80f) FoxElectricGreen else FoxAccentOrange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
@@ -153,7 +153,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
         // --- Milestone v1.1: 3-4 Year Lifetime Degradation Graph ---
         Spacer(modifier = Modifier.height(16.dp))
         LifetimeWearCard(
-            currentHealthPercent = state.estimatedHealthPercent,
+            currentHealthPercent = state.estimatedHealthPercent ?: 75f,
             cycleCount = state.cycleCount ?: 0,
             yearsActive = state.yearsActive
         )
