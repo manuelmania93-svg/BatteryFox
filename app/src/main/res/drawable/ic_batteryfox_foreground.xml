@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Fox Head Silhouette Outer Frame -->
+    <path
+        android:fillColor="@color/ic_batteryfox_foreground_white"
+        android:pathData="M 54,34 
+                          C 58,26 68,18 78,18 
+                          C 76,28 73,38 78,46 
+                          C 85,48 94,54 94,62 
+                          C 94,70 82,78 74,80 
+                          C 66,82 58,88 54,92 
+                          C 50,88 42,82 34,80 
+                          C 26,78 14,70 14,62 
+                          C 14,54 23,48 30,46 
+                          C 35,38 32,28 30,18 
+                          C 40,18 50,26 54,34 Z" />
+
+    <!-- Inner Mask: Cutout to define the Fox Face Cheeks and Ears -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 33,32 L 31,44 L 40,43 Z 
+                          M 75,32 L 77,44 L 68,43 Z
+                          M 25,60 C 25,68 33,74 42,75 L 36,62 Z
+                          M 83,60 C 83,68 75,74 66,75 L 72,62 Z" />
+
+    <!-- Left Eye: Positive Terminal (+) -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 32,38 H 38 V 32 H 41 V 38 H 47 V 41 H 41 V 47 H 38 V 41 H 32 Z" />
+
+    <!-- Right Eye: Negative Terminal (-) -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 61,38 H 76 V 41 H 61 Z" />
+
+    <!-- Center Snout: The Battery Body -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 48,46 H 60 C 62,46 63,47 63,49 V 74 C 63,76 62,77 60,77 H 48 C 46,77 45,76 45,74 V 49 C 45,47 46,46 48,46 Z" />
+
+    <!-- Battery Terminal Cap (Top of Battery) -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 51,43 H 57 V 46 H 51 Z" />
+
+    <!-- Battery Charge Bars (Inside the Snout) -->
+    <path
+        android:fillColor="@color/ic_batteryfox_foreground_white"
+        android:pathData="M 47,49 H 61 V 54 H 47 Z
+                          M 47,56 H 61 V 61 H 47 Z
+                          M 47,63 H 61 V 68 H 47 Z" />
+
+    <!-- Nose Tip Triangle -->
+    <path
+        android:fillColor="@color/ic_batteryfox_background"
+        android:pathData="M 51,81 H 57 L 54,85 Z" />
+
+</vector>
