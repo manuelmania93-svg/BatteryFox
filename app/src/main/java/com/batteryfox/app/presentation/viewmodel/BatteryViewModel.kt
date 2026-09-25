@@ -17,6 +17,7 @@ import com.batteryfox.app.core.oem.OemDiagnosticLauncher
 import com.batteryfox.app.core.parser.UniversalBugReportParser
 import com.batteryfox.app.core.permissions.UsageStatsPermissionHelper
 import com.batteryfox.app.core.service.BatteryMonitorService
+import com.batteryfox.app.core.storage.BatteryPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,8 +68,21 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val bugReportParser = UniversalBugReportParser()
     private val permissionHelper = UsageStatsPermissionHelper(application)
     private val drainEngine = RetrospectiveDrainEngine(application)
+    private val preferences = BatteryPreferences(application)
 
-    private val _state = MutableStateFlow(DashboardState())
+    private val _state = MutableStateFlow(
+        DashboardState(
+            measuredResistanceMilliOhms = preferences.getSavedResistance(),
+            testConfidence = preferences.getSavedConfidence(),
+            factoryDesignMah = preferences.getSavedDesignMah() ?: 0,
+            currentAvailableMah = preferences.getSavedAvailableMah() ?: 0,
+            calibrationStep = try {
+                CalibrationStep.valueOf(preferences.getSavedCalibrationStep())
+            } catch (_: Exception) {
+                CalibrationStep.IDLE
+            }
+        )
+    )
     val state: StateFlow<DashboardState> = _state.asStateFlow()
 
     init {
@@ -93,28 +107,28 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val currentMa = currentUa / 1000
         val powerWatts = (voltage / 1000f) * (abs(currentMa) / 1000f)
 
-        var cycles: Int? = null
+        var cycles: Int? = preferences.getSavedParsedCycles()
         if (Build.VERSION.SDK_INT >= 34) {
             val c = intent?.getIntExtra("android.os.extra.CYCLE_COUNT", -1) ?: -1
             if (c >= 0) cycles = c
         }
 
         val isDualCell = voltage > 5000
-        val designMah = getFactoryDesignCapacityMah(context)
+        val designMah = preferences.getSavedDesignMah() ?: getFactoryDesignCapacityMah(context)
 
         val nowMs = System.currentTimeMillis()
         val buildYears = ((nowMs - Build.TIME).toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
         val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
         val resolvedYears = max(buildYears, cycleDerivedYears).coerceIn(0.5f, 6.0f)
 
-        val calculatedHealth = if (cycles != null && cycles > 0) {
+        val calculatedHealth = preferences.getSavedParsedHealth() ?: if (cycles != null && cycles > 0) {
             val wear = cycles * 0.0225f
             max(50f, 100f - wear)
         } else {
             _state.value.estimatedHealthPercent
         }
 
-        val availableMah = ((designMah * calculatedHealth) / 100f).toInt()
+        val availableMah = preferences.getSavedAvailableMah() ?: ((designMah * calculatedHealth) / 100f).toInt()
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 
@@ -125,6 +139,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                         calibrationStep = CalibrationStep.CHARGING,
                         statusMessage = "Low cutoff reached! Plug into charger now."
                     )
+                    preferences.saveCalibrationStep(CalibrationStep.CHARGING.name)
                 }
             }
             CalibrationStep.CHARGING -> {
@@ -180,17 +195,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
     fun startCalibrationWizard() {
         val currentSoc = _state.value.batteryPercent
-        if (currentSoc <= 6) {
-            _state.value = _state.value.copy(
-                calibrationStep = CalibrationStep.CHARGING,
-                statusMessage = "Cell is depleted. Connect charger to begin 0-100% saturation cycle."
-            )
+        val targetStep = if (currentSoc <= 6) CalibrationStep.CHARGING else CalibrationStep.DISCHARGING
+        val msg = if (currentSoc <= 6) {
+            "Cell is depleted. Connect charger to begin 0-100% saturation cycle."
         } else {
-            _state.value = _state.value.copy(
-                calibrationStep = CalibrationStep.DISCHARGING,
-                statusMessage = "Discharge battery down to 5% to learn physical low-cutoff voltage."
-            )
+            "Discharge battery down to 5% to learn physical low-cutoff voltage."
         }
+
+        _state.value = _state.value.copy(calibrationStep = targetStep, statusMessage = msg)
+        preferences.saveCalibrationStep(targetStep.name)
     }
 
     private fun startSaturationPhase() {
@@ -199,6 +212,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             saturationMinutesRemaining = 45,
             statusMessage = "100% reached! Keep connected for 45 min float dwell."
         )
+        preferences.saveCalibrationStep(CalibrationStep.SATURATING.name)
 
         viewModelScope.launch {
             for (min in 45 downTo 1) {
@@ -210,6 +224,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 calibrationDriftDetected = false,
                 statusMessage = "PMIC registers calibrated! Cutoff & Qmax locked."
             )
+            preferences.saveCalibrationStep(CalibrationStep.COMPLETED.name)
         }
     }
 
@@ -218,6 +233,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             calibrationStep = CalibrationStep.IDLE,
             statusMessage = "Calibration wizard cancelled."
         )
+        preferences.saveCalibrationStep(CalibrationStep.IDLE.name)
     }
 
     fun toggleMonitorService() {
@@ -265,6 +281,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             _state.value = _state.value.copy(isTestingResistance = true, statusMessage = null)
             val result = resistanceTester.executeMultiSampleTest()
             result.onSuccess { data ->
+                preferences.saveStressTestResult(data.finalResistanceMilliOhms, data.confidence.name)
                 _state.value = _state.value.copy(
                     isTestingResistance = false,
                     measuredResistanceMilliOhms = data.finalResistanceMilliOhms,
@@ -291,6 +308,13 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                         bugReportParser.parseZip(stream)
                     } ?: throw IllegalStateException("Unable to open bug report stream.")
                 }
+
+                preferences.saveBugReportData(
+                    health = parseResult.report.healthPercent,
+                    cycles = parseResult.report.cycleCount,
+                    designMah = parseResult.report.designCapacityMah,
+                    availableMah = parseResult.report.currentCapacityMah
+                )
 
                 _state.value = _state.value.copy(
                     isParsingBugReport = false,
