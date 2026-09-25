@@ -39,6 +39,7 @@ data class DashboardState(
     val currentMa: Int = 0,
     val wattage: Float = 0f,
     val cycleCount: Int? = null,
+    val yearsActive: Float = 3.5f,
     val estimatedHealthPercent: Float = 100f,
     val factoryDesignMah: Int = 0,
     val currentAvailableMah: Int = 0,
@@ -93,6 +94,12 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val isDualCell = voltage > 5000
         val designMah = getFactoryDesignCapacityMah(context)
 
+        // Device Age Estimation (Resilient against recent OTA update timestamps)
+        val nowMs = System.currentTimeMillis()
+        val buildYears = ((nowMs - Build.TIME).toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
+        val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
+        val resolvedYears = max(buildYears, cycleDerivedYears).coerceIn(0.5f, 6.0f)
+
         val calculatedHealth = if (cycles != null && cycles > 0) {
             val wear = cycles * 0.0225f
             max(50f, 100f - wear)
@@ -104,6 +111,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 
+        // Calibration Step Progression
         when (_state.value.calibrationStep) {
             CalibrationStep.DISCHARGING -> {
                 if (soc <= 5 || perCellVoltage < 3450) {
@@ -134,6 +142,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             currentMa = currentMa,
             wattage = powerWatts,
             cycleCount = cycles,
+            yearsActive = resolvedYears,
             factoryDesignMah = designMah,
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,

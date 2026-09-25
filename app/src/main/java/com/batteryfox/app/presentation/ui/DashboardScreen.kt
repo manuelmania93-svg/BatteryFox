@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
+import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
 import com.batteryfox.app.presentation.viewmodel.CalibrationStep
 
@@ -146,6 +147,14 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             TelemetryCard(title = "FACTORY DESIGN", value = "${state.factoryDesignMah} mAh", modifier = Modifier.weight(1f))
             TelemetryCard(title = "LIFETIME CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
         }
+
+        // --- Milestone v1.1: 3-4 Year Lifetime Degradation Graph ---
+        Spacer(modifier = Modifier.height(16.dp))
+        LifetimeWearCard(
+            currentHealthPercent = state.estimatedHealthPercent,
+            cycleCount = state.cycleCount ?: 0,
+            yearsActive = state.yearsActive
+        )
 
         // --- Active Legit PMIC Calibration Wizard Card ---
         Spacer(modifier = Modifier.height(16.dp))
