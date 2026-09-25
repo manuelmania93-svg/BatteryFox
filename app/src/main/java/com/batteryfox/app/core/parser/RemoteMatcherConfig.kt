@@ -1,73 +1,55 @@
 package com.batteryfox.app.core.parser
 
 import org.json.JSONObject
-import java.io.File
 
-/**
- * Fixes the "regex drift" problem: instead of hardcoding vendor regexes into the APK
- * (which means every Samsung/Xiaomi log-format change needs a Play Store release),
- * matchers are loaded from a JSON document that can be:
- *   - bundled as a fallback default (assets/matcher_config.json)
- *   - overridden by a remotely-fetched version (Firebase Remote Config, or any hosted JSON)
- *
- * Example matcher_config.json:
- * {
- *   "version": 3,
- *   "vendors": {
- *     "aosp":     { "asoc": "(?:mSavedBatteryAsoc|health_percent):\\s*(\\d+)",
- *                   "cycle": "Cycle count:\\s*(\\d+)",
- *                   "design": "Device battery capacity:\\s*(\\d+)\\s*mAh",
- *                   "estimated": "Estimated battery capacity:\\s*(\\d+)\\s*mAh" },
- *     "samsung":  { "usage": "mSavedBatteryUsage:\\s*(\\d+)",
- *                   "asoc": "mSecBatteryStateOfHealth:\\s*(\\d+)" },
- *     "qualcomm": { "cycle": "(?:bms_cycle_count|fg_cycle|cycle_count):\\s*(\\d+)",
- *                   "chargeFull": "(?:charge_full|fg_charge_full):\\s*(\\d+)",
- *                   "design": "(?:charge_full_design|fg_design_cap):\\s*(\\d+)" }
- *   }
- * }
- */
-data class VendorMatchers(val patterns: Map<String, Regex>)
+data class MatcherRules(
+    val aospAsoc: Regex,
+    val aospCycle: Regex,
+    val aospDesign: Regex,
+    val aospEstimated: Regex,
+    val samsungUsage: Regex,
+    val samsungAsoc: Regex,
+    val samsungDesign: Regex,
+    val qcomCycle: Regex,
+    val qcomChargeFull: Regex,
+    val qcomDesign: Regex
+)
 
-class RemoteMatcherConfig private constructor(
-    val version: Int,
-    val vendors: Map<String, VendorMatchers>
-) {
-    companion object {
-        private const val CACHE_FILENAME = "matcher_config_cache.json"
+object RemoteMatcherConfig {
 
-        /** Load order: on-disk cache from a prior remote fetch, else the bundled asset default. */
-        fun load(cacheDir: File, bundledAssetJson: String): RemoteMatcherConfig {
-            val cacheFile = File(cacheDir, CACHE_FILENAME)
-            val json = if (cacheFile.exists()) {
-                runCatching { cacheFile.readText() }.getOrDefault(bundledAssetJson)
-            } else {
-                bundledAssetJson
-            }
-            return parse(json)
+    private const val DEFAULT_CONFIG_JSON = """
+    {
+      "aospAsoc": "(?:mSavedBatteryAsoc|health_percent):\\s*(\\d+)",
+      "aospCycle": "Cycle count:\\s*(\\d+)",
+      "aospDesign": "Device battery capacity:\\s*(\\d+)\\s*mAh",
+      "aospEstimated": "Estimated battery capacity:\\s*(\\d+)\\s*mAh",
+      "samsungUsage": "mSavedBatteryUsage:\\s*(\\d+)",
+      "samsungAsoc": "(?:mSecBatteryStateOfHealth|mSavedBatteryAsoc):\\s*(\\d+)",
+      "samsungDesign": "mDesignCapacity:\\s*(\\d+)",
+      "qcomCycle": "(?:bms_cycle_count|fg_cycle|cycle_count):\\s*(\\d+)",
+      "qcomChargeFull": "(?:charge_full|fg_charge_full):\\s*(\\d+)",
+      "qcomDesign": "(?:charge_full_design|fg_design_cap):\\s*(\\d+)"
+    }
+    """
+
+    fun parseConfig(jsonString: String = DEFAULT_CONFIG_JSON): MatcherRules {
+        val root = try {
+            JSONObject(jsonString)
+        } catch (_: Exception) {
+            JSONObject(DEFAULT_CONFIG_JSON)
         }
 
-        /** Call after fetching a fresher config (e.g. via Remote Config or a hosted URL fetch). */
-        fun updateCache(cacheDir: File, newJson: String): RemoteMatcherConfig {
-            val parsed = parse(newJson) // validate before persisting — a malformed push shouldn't brick parsing
-            File(cacheDir, CACHE_FILENAME).writeText(newJson)
-            return parsed
-        }
-
-        private fun parse(json: String): RemoteMatcherConfig {
-            val root = JSONObject(json)
-            val version = root.optInt("version", 1)
-            val vendorsObj = root.getJSONObject("vendors")
-            val vendors = mutableMapOf<String, VendorMatchers>()
-            vendorsObj.keys().forEach { vendorKey ->
-                val fields = vendorsObj.getJSONObject(vendorKey)
-                val patterns = mutableMapOf<String, Regex>()
-                fields.keys().forEach { fieldKey ->
-                    val pattern = fields.getString(fieldKey)
-                    patterns[fieldKey] = Regex(pattern, RegexOption.IGNORE_CASE)
-                }
-                vendors[vendorKey] = VendorMatchers(patterns)
-            }
-            return RemoteMatcherConfig(version, vendors)
-        }
+        return MatcherRules(
+            aospAsoc = Regex(root.optString("aospAsoc"), RegexOption.IGNORE_CASE),
+            aospCycle = Regex(root.optString("aospCycle"), RegexOption.IGNORE_CASE),
+            aospDesign = Regex(root.optString("aospDesign"), RegexOption.IGNORE_CASE),
+            aospEstimated = Regex(root.optString("aospEstimated"), RegexOption.IGNORE_CASE),
+            samsungUsage = Regex(root.optString("samsungUsage"), RegexOption.IGNORE_CASE),
+            samsungAsoc = Regex(root.optString("samsungAsoc"), RegexOption.IGNORE_CASE),
+            samsungDesign = Regex(root.optString("samsungDesign"), RegexOption.IGNORE_CASE),
+            qcomCycle = Regex(root.optString("qcomCycle"), RegexOption.IGNORE_CASE),
+            qcomChargeFull = Regex(root.optString("qcomChargeFull"), RegexOption.IGNORE_CASE),
+            qcomDesign = Regex(root.optString("qcomDesign"), RegexOption.IGNORE_CASE)
+        )
     }
 }
