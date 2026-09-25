@@ -29,22 +29,29 @@ fun LifetimeWearCard(
         colors = CardDefaults.cardColors(containerColor = FoxSurface)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // Header Row: Constrained with flex weight to prevent badge squishing
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
                     Text(
-                        text = "3-Year Lifetime Wear Trajectory",
+                        text = "Lifetime Wear Trajectory",
                         color = FoxTextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        fontSize = 15.sp,
+                        maxLines = 1
                     )
                     Text(
                         text = "Model: Calendar √t + Linear Cycle Wear",
                         color = FoxTextSecondary,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        maxLines = 1
                     )
                 }
                 Surface(
@@ -56,6 +63,8 @@ fun LifetimeWearCard(
                         color = FoxAccentOrange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -74,7 +83,7 @@ fun LifetimeWearCard(
                     val h = size.height
 
                     // 1. Draw 80% Critical Service Line (Dashed Horizon)
-                    val y80 = h * (1f - (80f - 40f) / 60f) // Map 40%-100% range to canvas height
+                    val y80 = h * (1f - (80f - 40f) / 60f)
                     drawLine(
                         color = Color(0x66FF5252),
                         start = Offset(0f, y80),
@@ -83,7 +92,7 @@ fun LifetimeWearCard(
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                     )
 
-                    // 2. Generate Degradation Curve Points (Day 0 @ 100% -> Today @ currentHealthPercent)
+                    // 2. Generate Degradation Curve Points
                     val totalMonths = (yearsActive * 12).toInt().coerceAtLeast(12)
                     val path = Path()
                     val fillPath = Path()
@@ -97,7 +106,6 @@ fun LifetimeWearCard(
 
                     for (m in 1..totalMonths) {
                         val progress = m.toFloat() / totalMonths.toFloat()
-                        // Chemical physics: wear proportional to sqrt(time) + linear cycle wear
                         val wearProgress = (0.4f * sqrt(progress)) + (0.6f * progress)
                         val estimatedHealth = 100f - (totalDrop * wearProgress)
 

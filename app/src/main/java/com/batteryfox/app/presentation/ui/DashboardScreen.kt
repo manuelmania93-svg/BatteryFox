@@ -178,7 +178,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Legit PMIC Calibration Wizard", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Legit PMIC Calibration Wizard", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f).padding(end = 8.dp), maxLines = 1)
                     Surface(
                         color = when (state.calibrationStep) {
                             CalibrationStep.IDLE -> FoxSurfaceVariant
@@ -188,7 +188,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = state.calibrationStep.name,
+                            text = state.calibrationStep.name, maxLines = 1, softWrap = false,
                             color = when (state.calibrationStep) {
                                 CalibrationStep.IDLE -> FoxTextSecondary
                                 CalibrationStep.COMPLETED -> FoxElectricGreen
