@@ -23,9 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
+import com.batteryfox.app.presentation.ui.components.BatteryCareCard
 import com.batteryfox.app.presentation.ui.components.CalibrationCard
 import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
-import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard\nimport com.batteryfox.app.presentation.ui.components.BatteryCareCard
+import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
 
 @Composable

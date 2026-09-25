@@ -48,6 +48,7 @@ data class DashboardState(
     val factoryDesignMah: Int = 0,
     val currentAvailableMah: Int = 0,
     val isDualCell: Boolean = false,
+    val batteryTechnology: String = "Li-poly",
     val isServiceRunning: Boolean = false,
     val isTestingResistance: Boolean = false,
     val isParsingBugReport: Boolean = false,
@@ -58,7 +59,7 @@ data class DashboardState(
     val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
     val saturationMinutesRemaining: Int = 45,
     val hasUsagePermission: Boolean = false,
-    val topHistoricalDrainers: List<AppDrainMetric> = emptyList(),\n    val batteryTechnology: String = "Li-poly"
+    val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -101,7 +102,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
         val tempRaw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
         val temp = tempRaw / 10f
-        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0\n        val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
 
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
         val currentMa = currentUa / 1000
@@ -168,10 +170,11 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             factoryDesignMah = designMah,
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,
+            batteryTechnology = tech,
             isServiceRunning = running,
             hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,
-            calibrationDriftDetected = isDrifted,\n            batteryTechnology = tech
+            calibrationDriftDetected = isDrifted
         )
     }
 
