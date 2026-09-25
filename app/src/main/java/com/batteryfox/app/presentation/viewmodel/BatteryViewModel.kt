@@ -55,9 +55,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val currentMa = currentUa / 1000
 
         var cycles: Int? = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val queriedCycles = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CYCLE_COUNT)
-            if (queriedCycles >= 0) cycles = queriedCycles
+        if (Build.VERSION.SDK_INT >= 34) {
+            val c = intent?.getIntExtra("android.os.extra.CYCLE_COUNT", -1) ?: -1
+            if (c >= 0) cycles = c
         }
 
         _state.value = _state.value.copy(

@@ -102,8 +102,9 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(12.dp))
+                val formattedHealth = String.format("%.1f", state.estimatedHealthPercent)
                 Text(
-                    text = "${"%.1f".format(state.estimatedHealthPercent)}%",
+                    text = "$formattedHealth%",
                     color = FoxTextPrimary,
                     fontSize = 56.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -152,7 +153,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 value = state.cycleCount?.toString() ?: "Android 14+",
                 modifier = Modifier.weight(1f)
             )
-        }
+        
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -160,12 +161,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
-        ) {
+        ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp)
-            ) {
+            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
                 Text(
                     text = "Active Impedance Calibration",
                     color = FoxTextPrimary,
@@ -179,22 +180,23 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     fontSize = 12.sp
                 )
 
-                state.measuredResistanceMilliOhms?.let { resistance ->
+                state.measuredResistanceMilliOhms?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  resistance ->
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
+                    ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+                        Column {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
                             Text("Internal Resistance", color = FoxTextSecondary, fontSize = 12.sp)
-                            Text("${"%.1f".format(resistance)} mO", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        }
-                        state.testConfidence?.let { conf ->
+                            val formattedRes = String.format("%.1f", resistance)
+                            Text("$formattedRes mO", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        
+                        state.testConfidence?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  conf ->
                             Surface(
                                 color = FoxSurfaceVariant,
                                 shape = RoundedCornerShape(8.dp)
-                            ) {
+                            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
                                 Text(
                                     text = "$conf CONFIDENCE",
                                     color = FoxAccentOrange,
@@ -202,26 +204,26 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
-                            }
-                        }
-                    }
-                }
+                            
+                        
+                    
+                
 
-                state.testErrorMessage?.let { err ->
+                state.testErrorMessage?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  err ->
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(text = err, color = Color(0xFFFF5252), fontSize = 12.sp)
-                }
+                
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = { viewModel.runResistanceStressTest() },
+                    onClick = {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  viewModel.runResistanceStressTest() ,
                     enabled = !state.isTestingResistance,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
-                ) {
-                    if (state.isTestingResistance) {
+                ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+                    if (state.isTestingResistance) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
                         CircularProgressIndicator(
                             color = Color.Black,
                             strokeWidth = 2.dp,
