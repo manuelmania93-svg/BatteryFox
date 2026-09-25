@@ -58,7 +58,7 @@ data class DashboardState(
     val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
     val saturationMinutesRemaining: Int = 45,
     val hasUsagePermission: Boolean = false,
-    val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
+    val topHistoricalDrainers: List<AppDrainMetric> = emptyList(),\n    val batteryTechnology: String = "Li-poly"
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -101,7 +101,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
         val tempRaw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
         val temp = tempRaw / 10f
-        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0\n        val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
 
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
         val currentMa = currentUa / 1000
@@ -171,7 +171,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             isServiceRunning = running,
             hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,
-            calibrationDriftDetected = isDrifted
+            calibrationDriftDetected = isDrifted,\n            batteryTechnology = tech
         )
     }
 
