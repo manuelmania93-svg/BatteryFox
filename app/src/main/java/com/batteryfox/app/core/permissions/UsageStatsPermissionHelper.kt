@@ -8,15 +8,9 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 
-/**
- * PACKAGE_USAGE_STATS can't be requested via ActivityCompat.requestPermissions —
- * it's a special-access permission granted only through its own Settings screen.
- * hasAccess() lets you show an explainer BEFORE deep-linking, since a bare
- * Settings redirect with no context reads as suspicious to users and reviewers.
- */
-object UsageStatsPermissionHelper {
+class UsageStatsPermissionHelper(private val context: Context) {
 
-    fun hasAccess(context: Context): Boolean {
+    fun hasUsageStatsAccess(): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             appOps.unsafeCheckOpNoThrow(
@@ -35,33 +29,26 @@ object UsageStatsPermissionHelper {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /**
-     * Call only after showing an explainer screen — this jumps straight to system Settings.
-     *
-     * Some OEM skins (MIUI, older ColorOS builds) crash with ActivityNotFoundException when a
-     * package: URI is attached to ACTION_USAGE_ACCESS_SETTINGS, even though the action itself
-     * exists on the device. Falls back to the generic (unscoped) usage-access screen, then to
-     * ACTION_SETTINGS as a last resort, rather than letting the crash propagate.
-     */
-    fun openUsageAccessSettings(context: Context) {
-        val scoped = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-            data = Uri.parse("package:${context.packageName}")
-        }
-        try {
-            context.startActivity(scoped)
-            return
-        } catch (e: Exception) {
-            // Fall through to the unscoped variant below
+    fun openUsageAccessSettings() {
+        val packageSpecificIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
-        val unscoped = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
         try {
-            context.startActivity(unscoped)
-            return
-        } catch (e: Exception) {
-            // Fall through to generic settings
+            context.startActivity(packageSpecificIntent)
+        } catch (_: Exception) {
+            val genericIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(genericIntent)
+            } catch (_: Exception) {
+                val fallback = Intent(Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+            }
         }
-
-        context.startActivity(Intent(Settings.ACTION_SETTINGS))
     }
 }
