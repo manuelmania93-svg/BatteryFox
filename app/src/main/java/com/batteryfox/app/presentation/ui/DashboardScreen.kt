@@ -46,6 +46,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     ) {
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Top Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -76,6 +77,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Hero Card: State of Health + Real Hardware Capacity
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -93,7 +95,16 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     fontSize = 54.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "${state.currentAvailableMah} mAh usable / ${state.factoryDesignMah} mAh design",
+                    color = FoxTextSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     color = if (state.estimatedHealthPercent >= 80f) FoxElectricGreen.copy(alpha = 0.15f) else FoxAccentOrange.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
@@ -111,6 +122,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Telemetry Row 1 (Voltage + Temp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val voltLabel = if (state.isDualCell) "VOLTS (2S DUAL)" else "VOLTAGE"
             TelemetryCard(title = voltLabel, value = "${state.voltageMv} mV", modifier = Modifier.weight(1f))
@@ -119,6 +131,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Telemetry Row 2 (Current + Power Watts)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TelemetryCard(title = "CURRENT", value = "${state.currentMa} mA", modifier = Modifier.weight(1f))
             val formattedWatts = String.format("%.2f", state.wattage)
@@ -127,54 +140,75 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Telemetry Row 3 (Capacity Details)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            val capValue = if (state.designCapacityMah > 0) "${state.remainingCapacityMah}/${state.designCapacityMah} mAh" else "${state.remainingCapacityMah} mAh"
-            TelemetryCard(title = "CAPACITY (REAL)", value = capValue, modifier = Modifier.weight(1f))
-            TelemetryCard(title = "CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "FACTORY DESIGN", value = "${state.factoryDesignMah} mAh", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "LIFETIME CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
+        }
+
+        // Calibration Drift Alert Card
+        if (state.calibrationDriftDetected) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = FoxAccentOrange.copy(alpha = 0.12f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Fuel Gauge Drift Detected", color = FoxAccentOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Your voltage does not match your battery %. Follow the 1-100% calibration cycle below to reset PMIC tracking.",
+                        color = FoxTextPrimary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
 
         state.statusMessage?.let { msg ->
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(text = msg, color = FoxAccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
 
         Spacer(modifier = Modifier.height(18.dp))
 
+        // Legitimate Calibration Protocol Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                Text("10-Second Impedance Test", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("Measures internal resistance (R_int) to calculate cell wear.", color = FoxTextSecondary, fontSize = 12.sp)
-
-                state.measuredResistanceMilliOhms?.let { res ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Resistance: ${res.toInt()} mΩ (${state.testConfidence ?: ""})", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { viewModel.runResistanceStressTest() },
-                    enabled = !state.isTestingResistance,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
-                ) {
-                    Text(
-                        if (state.isTestingResistance) "Testing Pulses..." else "Run 10-Second Health Test",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold
-                    )
+                Text("Legit 1-100% PMIC Calibration", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Fixes sudden percentage drops (e.g. 20% -> 0%) by forcing the fuel-gauge chip to learn real cutoff points.",
+                    color = FoxTextSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("1. Discharge continuously until phone powers off naturally.", color = FoxTextPrimary, fontSize = 12.sp)
+                    Text("2. Plug in and charge undisturbed to 100% without unplugging.", color = FoxTextPrimary, fontSize = 12.sp)
+                    Text("3. Leave plugged in for 60 min after 100% to saturate cell registers.", color = FoxTextPrimary, fontSize = 12.sp)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
+        // Action Buttons: Hardened OEM Menu + Bug Report Picker
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = { viewModel.launchOemMenu() },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
+            ) {
+                Text("Launch Testing Menu", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+
             OutlinedButton(
                 onClick = { filePicker.launch(arrayOf("application/zip", "application/octet-stream")) },
                 enabled = !state.isParsingBugReport,
@@ -184,18 +218,9 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             ) {
                 Text(if (state.isParsingBugReport) "Parsing..." else "Import Bug Report", fontSize = 12.sp)
             }
-
-            OutlinedButton(
-                onClick = { viewModel.launchOemMenu() },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = FoxTextPrimary)
-            ) {
-                Text("OEM Menu", fontSize = 12.sp)
-            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
