@@ -65,7 +65,8 @@ data class DashboardState(
     val customOsName: String = "",
     val factoryLaunchOs: String = "",
     val firstUsageDate: String? = null,
-    val currentUptimeHours: Long = 0L
+    val currentUptimeHours: Long = 0L,
+    val manufactureDate: String? = null
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -156,6 +157,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
         val uptimeHours = android.os.SystemClock.elapsedRealtime() / (1000L * 3600L)
 
+        var mfgDateFormatted: String? = null
+        if (Build.VERSION.SDK_INT >= 34) {
+            val mfgEpochMs = intent?.getLongExtra("android.os.extra.MANUFACTURING_DATE", -1L) ?: -1L
+            if (mfgEpochMs > 0) {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                mfgDateFormatted = sdf.format(java.util.Date(mfgEpochMs))
+            }
+        }
+
         // If cycles exist (Android 14+), calculate wear.
         // If Android <= 13, check saved test or saved bug report. Do NOT default to 100%.
         val calculatedHealth = preferences.getSavedParsedHealth() 
@@ -217,6 +227,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             factoryLaunchOs = firstOs,
             firstUsageDate = exactFirstUse,
             currentUptimeHours = uptimeHours,
+            manufactureDate = mfgDateFormatted,
             isServiceRunning = running,
             hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,

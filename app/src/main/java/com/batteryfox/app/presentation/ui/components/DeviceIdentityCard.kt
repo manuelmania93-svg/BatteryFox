@@ -20,6 +20,7 @@ fun DeviceIdentityCard(
     firstAndroidVersion: String,
     yearsActive: Float,
     firstUsageDate: String?,
+    manufactureDate: String?,
     uptimeHours: Long,
     modifier: Modifier = Modifier
 ) {
@@ -29,7 +30,7 @@ fun DeviceIdentityCard(
         colors = CardDefaults.cardColors(containerColor = FoxSurface)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // Header Row: Device Name + Total Years Badge
+            // Header Row: Device Model & Total Lifetime Years
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -69,13 +70,13 @@ fun DeviceIdentityCard(
             HorizontalDivider(color = FoxSurfaceVariant, thickness = 0.5.dp)
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Grid: Factory Launch Era vs First Usage / Active Hours
+            // Sub-grid 1: Factory Launch Era vs First Usage Date
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("FACTORY LAUNCH ERA", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text("FACTORY LAUNCH", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(firstAndroidVersion, color = FoxTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -85,6 +86,21 @@ fun DeviceIdentityCard(
                     Text(dateLabel, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(dateValue, color = FoxElectricGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Sub-grid 2: Battery Assembly Date (if available)
+            manufactureDate?.let { mfg ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text("PACK MANUFACTURE DATE", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(mfg, color = FoxAccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

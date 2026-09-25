@@ -37,6 +37,11 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
         var designCap: Int? = null
         var estimatedCap: Int? = null
         var vendorDetected = "GENERIC_AOSP"
+        var mfgDateString: String? = null
+        var totalChargingHours: Long? = null
+
+        val mfgRegex = Regex("""(?:mfg_date|manufacture_date|battery_mfg|mSavedBatteryMfgDate):\\s*([\\d\\-/]+)""", RegexOption.IGNORE_CASE)
+        val chargingHoursRegex = Regex("""(?:total_charging_time|charge_time_total):\\s*(\\d+)""", RegexOption.IGNORE_CASE)
 
         val matched = mutableListOf<String>()
 
