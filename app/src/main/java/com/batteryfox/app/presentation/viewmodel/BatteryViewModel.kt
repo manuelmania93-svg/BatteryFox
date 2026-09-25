@@ -29,14 +29,15 @@ data class DashboardState(
     val wattage: Float = 0f,
     val cycleCount: Int? = null,
     val estimatedHealthPercent: Float = 100f,
-    val designCapacityMah: Int = 0,
-    val remainingCapacityMah: Int = 0,
+    val factoryDesignMah: Int = 0,
+    val currentAvailableMah: Int = 0,
     val isDualCell: Boolean = false,
     val isTestingResistance: Boolean = false,
     val isParsingBugReport: Boolean = false,
     val measuredResistanceMilliOhms: Float? = null,
     val testConfidence: String? = null,
-    val statusMessage: String? = null
+    val statusMessage: String? = null,
+    val calibrationDriftDetected: Boolean = false
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -65,6 +66,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
         val currentMa = currentUa / 1000
+
         val powerWatts = (voltage / 1000f) * (abs(currentMa) / 1000f)
 
         var cycles: Int? = null
@@ -76,19 +78,16 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val isDualCell = voltage > 5000
         val designMah = getFactoryDesignCapacityMah(context)
 
-        val chargeCounterUah = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
-        val liveRemainingMah = if (chargeCounterUah > 0) {
-            chargeCounterUah / 1000
-        } else {
-            (designMah * soc) / 100
-        }
-
         val calculatedHealth = if (cycles != null && cycles > 0) {
-            val totalWear = cycles * 0.0225f
-            max(52f, 100f - totalWear)
+            val wear = cycles * 0.0225f
+            max(50f, 100f - wear)
         } else {
             _state.value.estimatedHealthPercent
         }
+
+        val availableMah = ((designMah * calculatedHealth) / 100f).toInt()
+        val perCellVoltage = if (isDualCell) voltage / 2 else voltage
+        val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 
         _state.value = _state.value.copy(
             batteryPercent = soc,
@@ -97,10 +96,11 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             currentMa = currentMa,
             wattage = powerWatts,
             cycleCount = cycles,
-            designCapacityMah = designMah,
-            remainingCapacityMah = liveRemainingMah,
+            factoryDesignMah = designMah,
+            currentAvailableMah = availableMah,
             isDualCell = isDualCell,
-            estimatedHealthPercent = calculatedHealth
+            estimatedHealthPercent = calculatedHealth,
+            calibrationDriftDetected = isDrifted
         )
     }
 
@@ -111,8 +111,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             val getAveragePowerMethod = powerProfileClass.getMethod("getAveragePower", String::class.java)
             val cap = getAveragePowerMethod.invoke(powerProfileInstance, "battery.capacity") as Double
             cap.toInt()
-        } catch (_: Exception) {
-            5000
+        } catch (e: Exception) {
+            4500
         }
     }
 
@@ -154,7 +154,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                     isParsingBugReport = false,
                     estimatedHealthPercent = parseResult.report.healthPercent,
                     cycleCount = parseResult.report.cycleCount,
-                    designCapacityMah = parseResult.report.designCapacityMah,
+                    factoryDesignMah = parseResult.report.designCapacityMah,
+                    currentAvailableMah = parseResult.report.currentCapacityMah,
                     statusMessage = "Parsed ${parseResult.telemetry.recognizedVendor} logs"
                 )
             } catch (e: Exception) {
