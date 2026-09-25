@@ -105,9 +105,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
         val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
 
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        val currentMa = currentUa / 1000
-        val powerWatts = (voltage / 1000f) * (abs(currentMa) / 1000f)
+        val rawMa = currentUa / 1000
+
+        // Normalize OEM current sign inversion (Xiaomi/Qualcomm vs Oppo/Samsung)
+        val currentMa = if (isCharging) kotlin.math.abs(rawMa) else -kotlin.math.abs(rawMa)
+        val powerWatts = (voltage / 1000f) * (kotlin.math.abs(currentMa) / 1000f)
 
         var cycles: Int? = preferences.getSavedParsedCycles()
         if (Build.VERSION.SDK_INT >= 34) {

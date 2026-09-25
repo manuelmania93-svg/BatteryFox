@@ -31,8 +31,12 @@ class BatteryMonitorService : Service() {
             val temp = tempRaw / 10f
 
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+
             val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            val currentMa = currentUa / 1000
+            val rawMa = currentUa / 1000
+            val currentMa = if (isCharging) abs(rawMa) else -abs(rawMa)
             val watts = (voltage / 1000f) * (abs(currentMa) / 1000f)
 
             val statusText = if (currentMa > 0) {
