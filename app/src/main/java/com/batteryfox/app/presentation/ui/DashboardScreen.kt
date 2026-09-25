@@ -24,7 +24,8 @@ import androidx.compose.ui.unit.sp
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
 import com.batteryfox.app.presentation.ui.components.BatteryCareCard
-import com.batteryfox.app.presentation.ui.components.CalibrationCard\nimport com.batteryfox.app.presentation.ui.components.DeviceIdentityCard
+import com.batteryfox.app.presentation.ui.components.CalibrationCard
+import com.batteryfox.app.presentation.ui.components.DeviceIdentityCard
 import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
 import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
@@ -50,7 +51,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     ) {
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Top Header
+        // Top Bar
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -79,7 +80,20 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // --- Device Silicon & Platform Auto-Detector ---
+        Spacer(modifier = Modifier.height(20.dp))
+        DeviceIdentityCard(
+            deviceModel = state.deviceModelName,
+            androidVersion = state.androidVersionString,
+            customOs = state.customOsName,
+            firstAndroidVersion = state.factoryLaunchOs,
+            yearsActive = state.yearsActive,
+            firstUsageDate = state.firstUsageDate,
+            manufactureDate = state.manufactureDate,
+            uptimeHours = state.currentUptimeHours
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         // Hero Card: State of Health + Real Hardware Capacity
         Card(
@@ -102,7 +116,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "${state.currentAvailableMah} mAh usable / ${state.factoryDesignMah} mAh design",
+                    text = if (state.estimatedHealthPercent != null) "${state.currentAvailableMah} mAh usable / ${state.factoryDesignMah} mAh design" else "-- mAh usable / ${state.factoryDesignMah} mAh design",
                     color = FoxTextSecondary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
@@ -113,9 +127,15 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     color = if (state.estimatedHealthPercent == null) FoxSurfaceVariant else if (state.estimatedHealthPercent!! >= 80f) FoxElectricGreen.copy(alpha = 0.15f) else FoxAccentOrange.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
+                    val badgeText = when {
+                        state.cycleCount != null -> if (state.estimatedHealthPercent!! >= 80f) "HEALTHY CELL (CYCLES)" else "AGED (SERVICE RECOMMENDED)"
+                        else -> "ESTIMATED (${"%.1f".format(state.yearsActive)} YRS ACTIVE)"
+                    }
+                    val badgeColor = if ((state.estimatedHealthPercent ?: 100f) >= 80f) FoxElectricGreen else FoxAccentOrange
+
                     Text(
-                        text = if (state.estimatedHealthPercent == null) "TEST REQUIRED (ANDROID <14)" else if (state.estimatedHealthPercent!! >= 80f) "HEALTHY CELL" else "AGED (SERVICE RECOMMENDED)",
-                        color = if (state.estimatedHealthPercent == null) FoxTextSecondary else if (state.estimatedHealthPercent!! >= 80f) FoxElectricGreen else FoxAccentOrange,
+                        text = badgeText,
+                        color = badgeColor,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
