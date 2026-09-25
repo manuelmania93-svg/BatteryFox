@@ -76,7 +76,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
         val soc = if (scale > 0) (level * 100) / scale else 0
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
-        val temp = (intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)) / 10f
+        val tempRaw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        val temp = tempRaw / 10f
         val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
 
         val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
@@ -100,11 +101,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val availableMah = ((designMah * calculatedHealth) / 100f).toInt()
-
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 
-        // Calibration Step Progression
         when (_state.value.calibrationStep) {
             CalibrationStep.DISCHARGING -> {
                 if (soc <= 5 || perCellVoltage < 3450) {
