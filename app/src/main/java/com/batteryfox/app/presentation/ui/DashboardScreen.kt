@@ -23,10 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
+import com.batteryfox.app.presentation.ui.components.CalibrationCard
 import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
 import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
-import com.batteryfox.app.presentation.viewmodel.CalibrationStep
 
 @Composable
 fun DashboardScreen(viewModel: BatteryViewModel) {
@@ -165,130 +165,18 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             onRequestPermission = { viewModel.requestUsagePermission() }
         )
 
-        // --- Active Legit PMIC Calibration Wizard Card ---
+        // --- Isolated Legit PMIC Calibration Card ---
         Spacer(modifier = Modifier.height(16.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = FoxSurface)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Legit PMIC Calibration Wizard", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f).padding(end = 8.dp), maxLines = 1)
-                    Surface(
-                        color = when (state.calibrationStep) {
-                            CalibrationStep.IDLE -> FoxSurfaceVariant
-                            CalibrationStep.COMPLETED -> FoxElectricGreen.copy(alpha = 0.15f)
-                            else -> FoxAccentOrange.copy(alpha = 0.15f)
-                        },
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = state.calibrationStep.name, maxLines = 1, softWrap = false, maxLines = 1, softWrap = false,
-                            color = when (state.calibrationStep) {
-                                CalibrationStep.IDLE -> FoxTextSecondary
-                                CalibrationStep.COMPLETED -> FoxElectricGreen
-                                else -> FoxAccentOrange
-                            },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                when (state.calibrationStep) {
-                    CalibrationStep.IDLE -> {
-                        Text(
-                            text = "Calibrates fuel gauge registers by learning true low cutoff & 100% saturation dwell. Fixes sudden % drops.",
-                            color = FoxTextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { viewModel.startCalibrationWizard() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
-                        ) {
-                            Text("Start Calibration Cycle", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    CalibrationStep.DISCHARGING -> {
-                        Text(
-                            text = "Stage 1: Discharge battery until phone hits 5% or powers off. Do not plug in yet.",
-                            color = FoxAccentOrange,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Per-cell voltage: ${if (state.isDualCell) state.voltageMv / 2 else state.voltageMv} mV (Target: < 3450 mV)",
-                            color = FoxTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { viewModel.cancelCalibration() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Cancel Wizard", color = FoxTextSecondary)
-                        }
-                    }
-                    CalibrationStep.CHARGING -> {
-                        Text(
-                            text = "Stage 2: Plug in and charge undisturbed to 100%. Do not unplug.",
-                            color = FoxElectricGreen,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Current: ${state.currentMa} mA | Power: ${String.format("%.1f", state.wattage)} W",
-                            color = FoxTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                    CalibrationStep.SATURATING -> {
-                        Text(
-                            text = "Stage 3 (Saturation Dwell): Android says 100%, but PMIC is still learning top registers.",
-                            color = FoxAccentOrange,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Taper Current: ${state.currentMa} mA | Dwell Timer: ${state.saturationMinutesRemaining} min left",
-                            color = FoxTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                    CalibrationStep.COMPLETED -> {
-                        Text(
-                            text = "Calibration Complete! Fuel gauge has learned real chemical cutoff and saturation endpoints.",
-                            color = FoxElectricGreen,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { viewModel.cancelCalibration() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FoxElectricGreen)
-                        ) {
-                            Text("Done", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
+        CalibrationCard(
+            step = state.calibrationStep,
+            voltageMv = state.voltageMv,
+            isDualCell = state.isDualCell,
+            currentMa = state.currentMa,
+            wattage = state.wattage,
+            saturationMinutesRemaining = state.saturationMinutesRemaining,
+            onStart = { viewModel.startCalibrationWizard() },
+            onCancel = { viewModel.cancelCalibration() }
+        )
 
         // Foreground Service Toggle Card
         Spacer(modifier = Modifier.height(14.dp))
