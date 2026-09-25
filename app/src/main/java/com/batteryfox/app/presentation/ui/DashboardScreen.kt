@@ -188,7 +188,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = state.calibrationStep.name, maxLines = 1, softWrap = false,
+                            text = state.calibrationStep.name, maxLines = 1, softWrap = false, maxLines = 1, softWrap = false,
                             color = when (state.calibrationStep) {
                                 CalibrationStep.IDLE -> FoxTextSecondary
                                 CalibrationStep.COMPLETED -> FoxElectricGreen

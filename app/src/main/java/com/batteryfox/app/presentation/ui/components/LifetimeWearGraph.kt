@@ -29,7 +29,7 @@ fun LifetimeWearCard(
         colors = CardDefaults.cardColors(containerColor = FoxSurface)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // Header Row: Constrained with flex weight to prevent badge squishing
+            // Header Row: Constrained with flex weight so badge never wraps vertically
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -82,7 +82,6 @@ fun LifetimeWearCard(
                     val w = size.width
                     val h = size.height
 
-                    // 1. Draw 80% Critical Service Line (Dashed Horizon)
                     val y80 = h * (1f - (80f - 40f) / 60f)
                     drawLine(
                         color = Color(0x66FF5252),
@@ -92,7 +91,6 @@ fun LifetimeWearCard(
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                     )
 
-                    // 2. Generate Degradation Curve Points
                     val totalMonths = (yearsActive * 12).toInt().coerceAtLeast(12)
                     val path = Path()
                     val fillPath = Path()
@@ -119,7 +117,6 @@ fun LifetimeWearCard(
                     fillPath.lineTo(w, h)
                     fillPath.close()
 
-                    // Draw Gradient Fill Under Curve
                     drawPath(
                         path = fillPath,
                         brush = Brush.verticalGradient(
@@ -132,14 +129,12 @@ fun LifetimeWearCard(
                         )
                     )
 
-                    // Draw Main Trajectory Stroke
                     drawPath(
                         path = path,
                         color = FoxAccentOrange,
                         style = Stroke(width = 5f, cap = StrokeCap.Round)
                     )
 
-                    // Draw "Today" Anchor Dot
                     val todayY = h * (1f - (currentHealthPercent - 40f) / 60f).coerceIn(0f, h)
                     drawCircle(color = Color.White, radius = 6f, center = Offset(w, todayY))
                     drawCircle(color = FoxAccentOrange, radius = 4f, center = Offset(w, todayY))
@@ -148,7 +143,6 @@ fun LifetimeWearCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // X-Axis Labels
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
