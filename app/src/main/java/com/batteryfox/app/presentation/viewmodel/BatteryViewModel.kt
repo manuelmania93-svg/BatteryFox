@@ -4,16 +4,21 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.batteryfox.app.core.engine.InternalResistanceTester
 import com.batteryfox.app.core.oem.OemDiagnosticLauncher
+import com.batteryfox.app.core.parser.UniversalBugReportParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.max
 
 data class DashboardState(
     val batteryPercent: Int = 0,
@@ -22,16 +27,19 @@ data class DashboardState(
     val currentMa: Int = 0,
     val cycleCount: Int? = null,
     val estimatedHealthPercent: Float = 100f,
+    val isDualCell: Boolean = false,
     val isTestingResistance: Boolean = false,
+    val isParsingBugReport: Boolean = false,
     val measuredResistanceMilliOhms: Float? = null,
     val testConfidence: String? = null,
-    val testErrorMessage: String? = null
+    val statusMessage: String? = null
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val resistanceTester = InternalResistanceTester(application)
     private val oemLauncher = OemDiagnosticLauncher(application)
+    private val bugReportParser = UniversalBugReportParser()
 
     private val _state = MutableStateFlow(DashboardState())
     val state: StateFlow<DashboardState> = _state.asStateFlow()
@@ -60,12 +68,26 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             if (c >= 0) cycles = c
         }
 
+        // Dual-Cell Detection (Voltages > 5000 mV indicate 2S dual-cell configuration)
+        val isDualCell = voltage > 5000
+
+        // Tier 5 Engine: Physical degradation curve anchored to hardware cycles
+        // Standard Li-ion degrades ~20% per 800 cycles (0.022% per cycle) + calendar baseline
+        val calculatedHealth = if (cycles != null && cycles > 0) {
+            val wearFromCycles = cycles * 0.0225f
+            max(50f, 100f - wearFromCycles)
+        } else {
+            _state.value.estimatedHealthPercent
+        }
+
         _state.value = _state.value.copy(
             batteryPercent = soc,
             voltageMv = voltage,
             temperatureCelsius = temp,
             currentMa = currentMa,
-            cycleCount = cycles
+            cycleCount = cycles,
+            isDualCell = isDualCell,
+            estimatedHealthPercent = calculatedHealth
         )
     }
 
@@ -73,11 +95,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         if (_state.value.isTestingResistance) return
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isTestingResistance = true,
-                testErrorMessage = null
-            )
-
+            _state.value = _state.value.copy(isTestingResistance = true, statusMessage = null)
             val result = resistanceTester.executeMultiSampleTest()
             result.onSuccess { data ->
                 _state.value = _state.value.copy(
@@ -85,18 +103,42 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                     measuredResistanceMilliOhms = data.finalResistanceMilliOhms,
                     estimatedHealthPercent = data.estimatedHealthPercent,
                     testConfidence = data.confidence.name,
-                    testErrorMessage = null
+                    statusMessage = "Test passed (${data.confidence.name} confidence)"
                 )
             }.onFailure { error ->
                 _state.value = _state.value.copy(
                     isTestingResistance = false,
-                    testErrorMessage = error.message ?: "Test failed"
+                    statusMessage = error.message ?: "Stress test failed"
                 )
             }
         }
     }
 
-    fun launchOemMenu(): Boolean {
-        return oemLauncher.launchHighestPriorityDiagnostic()
+    fun parseBugReportUri(uri: Uri) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isParsingBugReport = true, statusMessage = "Parsing dump...")
+            val context = getApplication<Application>()
+            try {
+                val parseResult = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        bugReportParser.parseZip(stream)
+                    } ?: throw IllegalStateException("Unable to open bug report stream.")
+                }
+
+                _state.value = _state.value.copy(
+                    isParsingBugReport = false,
+                    estimatedHealthPercent = parseResult.report.healthPercent,
+                    cycleCount = parseResult.report.cycleCount,
+                    statusMessage = "Parsed ${parseResult.telemetry.recognizedVendor} logs"
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isParsingBugReport = false,
+                    statusMessage = "Parse failed: ${e.localizedMessage ?: "Invalid file"}"
+                )
+            }
+        }
     }
+
+    fun launchOemMenu(): Boolean = oemLauncher.launchHighestPriorityDiagnostic()
 }

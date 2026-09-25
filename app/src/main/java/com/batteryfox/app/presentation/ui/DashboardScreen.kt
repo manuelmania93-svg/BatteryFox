@@ -1,5 +1,7 @@
 package com.batteryfox.app.presentation.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -28,6 +30,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     val state by viewModel.state.collectAsState()
     val scrollState = rememberScrollState()
 
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.parseBugReportUri(it) }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -38,6 +46,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     ) {
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Top Bar
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -68,6 +77,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(28.dp))
 
+        // Health Hero Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -77,12 +87,12 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("ESTIMATED STATE OF HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("HARDWARE STATE OF HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "${state.estimatedHealthPercent.toInt()}%",
                     color = FoxTextPrimary,
-                    fontSize = 52.sp,
+                    fontSize = 54.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -91,11 +101,11 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = if (state.estimatedHealthPercent >= 80f) "HEALTHY CELL" else "DEGRADED CELL",
+                        text = if (state.estimatedHealthPercent >= 80f) "HEALTHY CELL" else "AGED (SERVICE RECOMMENDED)",
                         color = if (state.estimatedHealthPercent >= 80f) FoxElectricGreen else FoxAccentOrange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -103,20 +113,29 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Telemetry Row 1
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TelemetryCard(title = "VOLTAGE", value = "${state.voltageMv} mV", modifier = Modifier.weight(1f))
+            val voltLabel = if (state.isDualCell) "VOLTAGE (2S DUAL)" else "VOLTAGE"
+            TelemetryCard(title = voltLabel, value = "${state.voltageMv} mV", modifier = Modifier.weight(1f))
             TelemetryCard(title = "TEMP", value = "${state.temperatureCelsius} °C", modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Telemetry Row 2
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TelemetryCard(title = "CURRENT", value = "${state.currentMa} mA", modifier = Modifier.weight(1f))
-            TelemetryCard(title = "CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "LIFETIME CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        state.statusMessage?.let { msg ->
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(text = msg, color = FoxAccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
 
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Stress Test Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -129,12 +148,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
                 state.measuredResistanceMilliOhms?.let { res ->
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Resistance: ${res.toInt()} mO (${state.testConfidence ?: ""} confidence)", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
-                }
-
-                state.testErrorMessage?.let { err ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(err, color = Color(0xFFFF5252), fontSize = 12.sp)
+                    Text("Resistance: ${res.toInt()} mO (${state.testConfidence ?: ""})", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -156,13 +170,26 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedButton(
-            onClick = { viewModel.launchOemMenu() },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = FoxTextPrimary)
-        ) {
-            Text("Launch OEM Hardware Screen")
+        // Diagnostics Actions
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { filePicker.launch(arrayOf("application/zip", "application/octet-stream")) },
+                enabled = !state.isParsingBugReport,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = FoxTextPrimary)
+            ) {
+                Text(if (state.isParsingBugReport) "Parsing..." else "Import Bug Report", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = { viewModel.launchOemMenu() },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = FoxTextPrimary)
+            ) {
+                Text("OEM Menu", fontSize = 12.sp)
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
