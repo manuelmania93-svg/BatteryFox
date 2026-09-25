@@ -8,21 +8,21 @@ import com.batteryfox.app.presentation.theme.BatteryFoxTheme
 import com.batteryfox.app.presentation.ui.DashboardScreen
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
 
-class MainActivity : ComponentActivity() {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+class MainActivity : ComponentActivity() {
 
     private val viewModel: BatteryViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-            BatteryFoxTheme {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+        setContent {
+            BatteryFoxTheme {
                 DashboardScreen(viewModel = viewModel)
-            
-        
-    
+            }
+        }
+    }
 
-    override fun onResume() {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+    override fun onResume() {
         super.onResume()
         viewModel.refreshTelemetry()
-    
-
+    }
+}

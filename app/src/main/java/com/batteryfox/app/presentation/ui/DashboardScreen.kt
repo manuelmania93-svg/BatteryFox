@@ -38,7 +38,6 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
     ) {
         Spacer(modifier = Modifier.height(28.dp))
 
-        // --- Header Section ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -84,7 +83,6 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // --- Health Hero Card ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -128,7 +126,6 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // --- Live Telemetry Grid ---
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TelemetryCard(
                 title = "VOLTAGE",
@@ -155,21 +152,20 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 value = state.cycleCount?.toString() ?: "Android 14+",
                 modifier = Modifier.weight(1f)
             )
-        
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 10-Second Stress Test Section ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
-        ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp)
-            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+            ) {
                 Text(
                     text = "Active Impedance Calibration",
                     color = FoxTextPrimary,
@@ -183,22 +179,22 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     fontSize = 12.sp
                 )
 
-                state.measuredResistanceMilliOhms?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  resistance ->
+                state.measuredResistanceMilliOhms?.let { resistance ->
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
-                    ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                        Column {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+                    ) {
+                        Column {
                             Text("Internal Resistance", color = FoxTextSecondary, fontSize = 12.sp)
-                            Text("$"%.1f".format(resistance) mO", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        
-                        state.testConfidence?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  conf ->
+                            Text("${"%.1f".format(resistance)} mO", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        }
+                        state.testConfidence?.let { conf ->
                             Surface(
                                 color = FoxSurfaceVariant,
                                 shape = RoundedCornerShape(8.dp)
-                            ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+                            ) {
                                 Text(
                                     text = "$conf CONFIDENCE",
                                     color = FoxAccentOrange,
@@ -206,26 +202,26 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
-                            
-                        
-                    
-                
+                            }
+                        }
+                    }
+                }
 
-                state.testErrorMessage?.let {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  err ->
+                state.testErrorMessage?.let { err ->
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(text = err, color = Color(0xFFFF5252), fontSize = 12.sp)
-                
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  viewModel.runResistanceStressTest() ,
+                    onClick = { viewModel.runResistanceStressTest() },
                     enabled = !state.isTestingResistance,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
-                ) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
-                    if (state.isTestingResistance) {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts} 
+                ) {
+                    if (state.isTestingResistance) {
                         CircularProgressIndicator(
                             color = Color.Black,
                             strokeWidth = 2.dp,
@@ -242,7 +238,6 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Hardware Diagnostic Deep Link Button ---
         OutlinedButton(
             onClick = {.git{,hub,ignore},README.md,app,build.gradle.kts,gradle{,.properties,w{,.bat}},settings.gradle.kts}  viewModel.launchOemMenu() ,
             modifier = Modifier.fillMaxWidth(),
