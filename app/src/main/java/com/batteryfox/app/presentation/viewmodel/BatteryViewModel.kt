@@ -10,9 +10,12 @@ import android.os.BatteryManager
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.batteryfox.app.core.engine.AppDrainMetric
 import com.batteryfox.app.core.engine.InternalResistanceTester
+import com.batteryfox.app.core.engine.RetrospectiveDrainEngine
 import com.batteryfox.app.core.oem.OemDiagnosticLauncher
 import com.batteryfox.app.core.parser.UniversalBugReportParser
+import com.batteryfox.app.core.permissions.UsageStatsPermissionHelper
 import com.batteryfox.app.core.service.BatteryMonitorService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -52,7 +55,9 @@ data class DashboardState(
     val statusMessage: String? = null,
     val calibrationDriftDetected: Boolean = false,
     val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
-    val saturationMinutesRemaining: Int = 45
+    val saturationMinutesRemaining: Int = 45,
+    val hasUsagePermission: Boolean = false,
+    val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -60,12 +65,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val resistanceTester = InternalResistanceTester(application)
     private val oemLauncher = OemDiagnosticLauncher(application)
     private val bugReportParser = UniversalBugReportParser()
+    private val permissionHelper = UsageStatsPermissionHelper(application)
+    private val drainEngine = RetrospectiveDrainEngine(application)
 
     private val _state = MutableStateFlow(DashboardState())
     val state: StateFlow<DashboardState> = _state.asStateFlow()
 
     init {
         refreshTelemetry()
+        loadHistoricalDrain()
     }
 
     fun refreshTelemetry() {
@@ -94,7 +102,6 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val isDualCell = voltage > 5000
         val designMah = getFactoryDesignCapacityMah(context)
 
-        // Device Age Estimation (Resilient against recent OTA update timestamps)
         val nowMs = System.currentTimeMillis()
         val buildYears = ((nowMs - Build.TIME).toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
         val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
@@ -111,7 +118,6 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val perCellVoltage = if (isDualCell) voltage / 2 else voltage
         val isDrifted = (soc > 20 && perCellVoltage < 3500) || (soc < 80 && perCellVoltage > 4300)
 
-        // Calibration Step Progression
         when (_state.value.calibrationStep) {
             CalibrationStep.DISCHARGING -> {
                 if (soc <= 5 || perCellVoltage < 3450) {
@@ -134,6 +140,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val running = isServiceRunning(context, BatteryMonitorService::class.java)
+        val hasUsage = permissionHelper.hasUsageStatsAccess()
 
         _state.value = _state.value.copy(
             batteryPercent = soc,
@@ -147,9 +154,28 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,
             isServiceRunning = running,
+            hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,
             calibrationDriftDetected = isDrifted
         )
+    }
+
+    fun loadHistoricalDrain() {
+        viewModelScope.launch {
+            if (permissionHelper.hasUsageStatsAccess()) {
+                val list = drainEngine.getTopHistoricalDrainers(_state.value.factoryDesignMah.coerceAtLeast(4000))
+                _state.value = _state.value.copy(
+                    hasUsagePermission = true,
+                    topHistoricalDrainers = list
+                )
+            } else {
+                _state.value = _state.value.copy(hasUsagePermission = false)
+            }
+        }
+    }
+
+    fun requestUsagePermission() {
+        permissionHelper.openUsageAccessSettings()
     }
 
     fun startCalibrationWizard() {

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
 import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
+import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
 import com.batteryfox.app.presentation.viewmodel.CalibrationStep
 
@@ -154,6 +155,14 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             currentHealthPercent = state.estimatedHealthPercent,
             cycleCount = state.cycleCount ?: 0,
             yearsActive = state.yearsActive
+        )
+
+        // --- Tier 4: 30-Day Retrospective App Drain Card ---
+        Spacer(modifier = Modifier.height(16.dp))
+        RetrospectiveDrainCard(
+            hasPermission = state.hasUsagePermission,
+            drainList = state.topHistoricalDrainers,
+            onRequestPermission = { viewModel.requestUsagePermission() }
         )
 
         // --- Active Legit PMIC Calibration Wizard Card ---
