@@ -19,6 +19,8 @@ fun DeviceIdentityCard(
     customOs: String,
     firstAndroidVersion: String,
     yearsActive: Float,
+    firstUsageDate: String?,
+    uptimeHours: Long,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -27,6 +29,7 @@ fun DeviceIdentityCard(
         colors = CardDefaults.cardColors(containerColor = FoxSurface)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // Header Row: Device Name + Total Years Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -66,19 +69,22 @@ fun DeviceIdentityCard(
             HorizontalDivider(color = FoxSurfaceVariant, thickness = 0.5.dp)
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Grid: Factory Launch Era vs First Usage / Active Hours
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
-                    Text("FACTORY LAUNCH OS", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("FACTORY LAUNCH ERA", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(firstAndroidVersion, color = FoxTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("HARDWARE BIRTH", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    val dateLabel = if (firstUsageDate != null) "FIRST USAGE DATE" else "CURRENT RUNTIME"
+                    val dateValue = firstUsageDate ?: "${uptimeHours}h active boot"
+                    Text(dateLabel, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text("Silicon Est. ~${"%.1f".format(yearsActive)} yrs", color = FoxElectricGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(dateValue, color = FoxElectricGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
