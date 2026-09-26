@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.batteryfox.app.core.engine.AppDrainMetric
@@ -25,6 +26,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -44,11 +48,19 @@ data class DashboardState(
     val wattage: Float = 0f,
     val cycleCount: Int? = null,
     val yearsActive: Float = 3.5f,
+    val formattedDetailedAge: String = "Calculating...",
     val estimatedHealthPercent: Float? = null,
     val factoryDesignMah: Int = 0,
     val currentAvailableMah: Int = 0,
     val isDualCell: Boolean = false,
     val batteryTechnology: String = "Li-poly",
+    val deviceModelName: String = "",
+    val androidVersionString: String = "",
+    val customOsName: String = "",
+    val factoryLaunchOs: String = "",
+    val firstUsageDate: String? = null,
+    val manufactureDate: String? = null,
+    val currentUptimeHours: Long = 0L,
     val isServiceRunning: Boolean = false,
     val isTestingResistance: Boolean = false,
     val isParsingBugReport: Boolean = false,
@@ -59,15 +71,7 @@ data class DashboardState(
     val calibrationStep: CalibrationStep = CalibrationStep.IDLE,
     val saturationMinutesRemaining: Int = 45,
     val hasUsagePermission: Boolean = false,
-    val topHistoricalDrainers: List<AppDrainMetric> = emptyList(),
-    val deviceModelName: String = "",
-    val androidVersionString: String = "",
-    val customOsName: String = "",
-    val factoryLaunchOs: String = "",
-    val formattedDetailedAge: String = "Calculating...",
-    val firstUsageDate: String? = null,
-    val currentUptimeHours: Long = 0L,
-    val manufactureDate: String? = null
+    val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -110,19 +114,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
         val tempRaw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
         val temp = tempRaw / 10f
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
         val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
         val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
 
-        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-
         val currentRaw = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        // Samsung Quirk: Galaxy devices report in mA directly (<10,000), while AOSP/Xiaomi report in uA (>10,000)
-        val rawMa = if (kotlin.math.abs(currentRaw) > 10_000) currentRaw / 1000 else currentRaw
-
-        // Normalize OEM current sign inversion
-        val currentMa = if (isCharging) kotlin.math.abs(rawMa) else -kotlin.math.abs(rawMa)
-        val powerWatts = (voltage / 1000f) * (kotlin.math.abs(currentMa) / 1000f)
+        val rawMa = if (abs(currentRaw) > 10_000) currentRaw / 1000 else currentRaw
+        val currentMa = if (isCharging) abs(rawMa) else -abs(rawMa)
+        val powerWatts = (voltage / 1000f) * (abs(currentMa) / 1000f)
 
         var cycles: Int? = preferences.getSavedParsedCycles()
         if (Build.VERSION.SDK_INT >= 34) {
@@ -133,55 +133,43 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val isDualCell = voltage > 5000
         val designMah = preferences.getSavedDesignMah() ?: getFactoryDesignCapacityMah(context)
 
-        val nowMs = System.currentTimeMillis()
-        val buildYears = ((nowMs - Build.TIME).toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
-        val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
-
-        // True Hardware Launch Detection via ro.product.first_api_level
-        // Multi-Sensor Precise Device Age Engine
+        // Multi-Sensor Hardware Age Engine
         val preciseAgeInfo = calculatePreciseDeviceAge(cycles)
         val resolvedYears = preciseAgeInfo.yearsFloat
         val detailedAgeString = preciseAgeInfo.formattedString
-        val firstApi = getFirstApiLevel()
 
+        val firstApi = getFirstApiLevel()
         val devModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
         val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
         val customOs = detectCustomOs()
         val firstOs = "Android ${getAndroidNameFromApi(firstApi)} (API $firstApi)"
 
-        // Query Android 14+ First Usage Timestamp if exposed by OEM
         var exactFirstUse: String? = null
+        var mfgDateFormatted: String? = null
         if (Build.VERSION.SDK_INT >= 34) {
             val firstUseEpochMs = intent?.getLongExtra("android.os.extra.FIRST_USAGE_DATE", -1L) ?: -1L
             if (firstUseEpochMs > 0) {
-                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                exactFirstUse = sdf.format(java.util.Date(firstUseEpochMs))
+                exactFirstUse = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(firstUseEpochMs))
             }
-        }
-
-        val uptimeHours = android.os.SystemClock.elapsedRealtime() / (1000L * 3600L)
-
-        var mfgDateFormatted: String? = null
-        if (Build.VERSION.SDK_INT >= 34) {
             val mfgEpochMs = intent?.getLongExtra("android.os.extra.MANUFACTURING_DATE", -1L) ?: -1L
             if (mfgEpochMs > 0) {
-                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                mfgDateFormatted = sdf.format(java.util.Date(mfgEpochMs))
+                mfgDateFormatted = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(mfgEpochMs))
             }
         }
 
-        // If cycles exist (Android 14+), calculate wear.
-        // If Android <= 13, check saved test or saved bug report. Do NOT default to 100%.
-        val calculatedHealth = preferences.getSavedParsedHealth() 
+        val uptimeHours = SystemClock.elapsedRealtime() / (1000L * 3600L)
+
+        // Multi-tier health resolution
+        val calculatedHealth = preferences.getSavedParsedHealth()
             ?: preferences.getSavedResistance()?.let { r ->
-                // Map saved resistance to health if available
                 if (r <= 70f) 100f else (100f - ((r - 70f) / 110f) * 35f).coerceIn(45f, 100f)
             }
             ?: if (cycles != null && cycles > 0) {
                 val wear = cycles * 0.0225f
                 max(50f, 100f - wear)
             } else {
-                null // Unknown until test is executed
+                val calendarWear = (resolvedYears * 5.5f).coerceIn(5f, 45f)
+                max(55f, 100f - calendarWear)
             }
 
         val availableMah = preferences.getSavedAvailableMah() ?: ((designMah * (calculatedHealth ?: 100f)) / 100f).toInt()
@@ -221,6 +209,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             wattage = powerWatts,
             cycleCount = cycles,
             yearsActive = resolvedYears,
+            formattedDetailedAge = detailedAgeString,
             factoryDesignMah = designMah,
             currentAvailableMah = availableMah,
             isDualCell = isDualCell,
@@ -229,15 +218,139 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             androidVersionString = osVersion,
             customOsName = customOs,
             factoryLaunchOs = firstOs,
-            formattedDetailedAge = detailedAgeString,
             firstUsageDate = exactFirstUse,
-            currentUptimeHours = uptimeHours,
             manufactureDate = mfgDateFormatted,
+            currentUptimeHours = uptimeHours,
             isServiceRunning = running,
             hasUsagePermission = hasUsage,
             estimatedHealthPercent = calculatedHealth,
             calibrationDriftDetected = isDrifted
         )
+    }
+
+    private data class PreciseAgeResult(val yearsFloat: Float, val formattedString: String)
+
+    private fun calculatePreciseDeviceAge(cycles: Int?): PreciseAgeResult {
+        val now = System.currentTimeMillis()
+
+        var securityPatchEpoch = 0L
+        try {
+            val patchStr = Build.VERSION.SECURITY_PATCH
+            if (patchStr.isNotEmpty()) {
+                securityPatchEpoch = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(patchStr)?.time ?: 0L
+            }
+        } catch (_: Exception) {}
+
+        val firstApi = getFirstApiLevel()
+        val apiLaunchEpoch = getEstimatedYearsFromApiEpoch(firstApi)
+        val siliconLaunchEpoch = getSiliconEraEpoch()
+
+        val candidateEpochs = listOf(Build.TIME, securityPatchEpoch, apiLaunchEpoch, siliconLaunchEpoch)
+            .filter { it in 1400000000000L..now }
+
+        var birthEpoch = if (candidateEpochs.isNotEmpty()) candidateEpochs.minOrNull()!! else Build.TIME
+
+        if (cycles != null && cycles > 600) {
+            val cycleDays = (cycles * 0.72f).toLong()
+            val cycleBirthEstimate = now - (cycleDays * 24L * 3600L * 1000L)
+            if (cycleBirthEstimate < birthEpoch) {
+                birthEpoch = cycleBirthEstimate
+            }
+        }
+
+        val totalDays = ((now - birthEpoch) / (1000L * 3600L * 24L)).coerceAtLeast(30L)
+        val years = totalDays / 365
+        val months = (totalDays % 365) / 30
+        val yearsFloat = (totalDays.toFloat() / 365.25f).coerceIn(0.5f, 9.0f)
+
+        val formatted = when {
+            years > 0 && months > 0 -> "${years}y ${months}m (${totalDays}d)"
+            years > 0 -> "${years}y (${totalDays}d)"
+            else -> "${totalDays / 30}m (${totalDays}d)"
+        }
+
+        return PreciseAgeResult(yearsFloat, formatted)
+    }
+
+    private fun getSiliconEraEpoch(): Long {
+        val hardware = (Build.HARDWARE + " " + Build.BOARD + " " + Build.SOC_MODEL).lowercase()
+        return when {
+            hardware.contains("kalama") || hardware.contains("sm8550") -> 1675209600000L // Feb 2023 (S23)
+            hardware.contains("taro") || hardware.contains("sm8450") -> 1644364800000L // Feb 2022 (S22)
+            hardware.contains("atoll") || hardware.contains("sm6150") || hardware.contains("curtana") -> 1584921600000L // March 2020 (Note 9S)
+            hardware.contains("lahaina") || hardware.contains("sm8350") -> 1611000000000L // Jan 2021
+            else -> 0L
+        }
+    }
+
+    private fun getEstimatedYearsFromApiEpoch(firstApi: Int): Long {
+        return when (firstApi) {
+            28 -> 1533500000000L // Android 9
+            29 -> 1583000000000L // Android 10
+            30 -> 1600000000000L // Android 11
+            31, 32 -> 1634000000000L // Android 12
+            33 -> 1676000000000L // Android 13
+            34 -> 1700000000000L // Android 14
+            35 -> 1730000000000L // Android 15
+            else -> Build.TIME
+        }
+    }
+
+    private fun getFirstApiLevel(): Int {
+        return try {
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
+            val levelStr = getMethod.invoke(null, "ro.product.first_api_level", "0") as String
+            val level = levelStr.toIntOrNull() ?: 0
+            if (level > 0) level else Build.VERSION.SDK_INT
+        } catch (_: Exception) {
+            Build.VERSION.SDK_INT
+        }
+    }
+
+    private fun getAndroidNameFromApi(api: Int): String {
+        return when (api) {
+            26 -> "8.0"; 27 -> "8.1"; 28 -> "9.0"; 29 -> "10"; 30 -> "11"
+            31 -> "12"; 32 -> "12L"; 33 -> "13"; 34 -> "14"; 35 -> "15"
+            else -> api.toString()
+        }
+    }
+
+    private fun detectCustomOs(): String {
+        return try {
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
+
+            val miui = getMethod.invoke(null, "ro.miui.ui.version.name", "") as String
+            if (miui.isNotEmpty()) return "MIUI $miui"
+
+            val hyperOs = getMethod.invoke(null, "ro.mi.os.version.name", "") as String
+            if (hyperOs.isNotEmpty()) return "HyperOS $hyperOs"
+
+            val oplus = getMethod.invoke(null, "ro.build.version.oplusrom", "") as String
+            if (oplus.isNotEmpty()) return "ColorOS $oplus"
+
+            val oneUi = getMethod.invoke(null, "ro.build.version.oneui", "") as String
+            if (oneUi.isNotEmpty()) return "One UI $oneUi"
+
+            if (Build.BRAND.equals("google", ignoreCase = true)) return "Pixel Experience"
+
+            "Stock OS"
+        } catch (_: Exception) {
+            "Android"
+        }
+    }
+
+    private fun getFactoryDesignCapacityMah(context: Context): Int {
+        return try {
+            val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
+            val powerProfileInstance = powerProfileClass.getConstructor(Context::class.java).newInstance(context)
+            val getAveragePowerMethod = powerProfileClass.getMethod("getAveragePower", String::class.java)
+            val cap = getAveragePowerMethod.invoke(powerProfileInstance, "battery.capacity") as Double
+            cap.toInt()
+        } catch (_: Exception) {
+            4500
+        }
     }
 
     fun loadHistoricalDrain() {
@@ -325,84 +438,6 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             if (serviceClass.name == service.service.className) return true
         }
         return false
-    }
-
-    private fun getFirstApiLevel(): Int {
-        return try {
-            val systemProperties = Class.forName("android.os.SystemProperties")
-            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
-            val levelStr = getMethod.invoke(null, "ro.product.first_api_level", "0") as String
-            val level = levelStr.toIntOrNull() ?: 0
-            if (level > 0) level else Build.VERSION.SDK_INT
-        } catch (_: Exception) {
-            Build.VERSION.SDK_INT
-        }
-    }
-
-    private fun getEstimatedYearsFromApi(firstApi: Int): Float {
-        // Approximate release date from factory shipping API level
-        val launchEpoch = when (firstApi) {
-            21 -> 1415000000000L // Android 5.0 (Late 2014)
-            22 -> 1425000000000L // Android 5.1 (Early 2015)
-            23 -> 1444000000000L // Android 6.0 (Late 2015)
-            24, 25 -> 1472000000000L // Android 7.0/7.1 (Late 2016)
-            26, 27 -> 1503000000000L // Android 8.0/8.1 (Late 2017)
-            28 -> 1533500000000L // Android 9.0 (Mid 2018)
-            29 -> 1567500000000L // Android 10 (Late 2019 / Early 2020)
-            30 -> 1599500000000L // Android 11 (Late 2020)
-            31, 32 -> 1633500000000L // Android 12 (Late 2021)
-            33 -> 1660500000000L // Android 13 (Late 2022)
-            34 -> 1696400000000L // Android 14 (Late 2023)
-            35 -> 1725300000000L // Android 15 (Late 2024)
-            else -> Build.TIME
-        }
-        val diff = System.currentTimeMillis() - launchEpoch
-        return (diff.toDouble() / (1000L * 60 * 60 * 24 * 365.25)).toFloat()
-    }
-
-    private fun getAndroidNameFromApi(api: Int): String {
-        return when (api) {
-            26 -> "8.0"; 27 -> "8.1"; 28 -> "9.0"; 29 -> "10"; 30 -> "11"
-            31 -> "12"; 32 -> "12L"; 33 -> "13"; 34 -> "14"; 35 -> "15"
-            else -> api.toString()
-        }
-    }
-
-    private fun detectCustomOs(): String {
-        return try {
-            val systemProperties = Class.forName("android.os.SystemProperties")
-            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
-
-            val miui = getMethod.invoke(null, "ro.miui.ui.version.name", "") as String
-            if (miui.isNotEmpty()) return "MIUI $miui"
-
-            val hyperOs = getMethod.invoke(null, "ro.mi.os.version.name", "") as String
-            if (hyperOs.isNotEmpty()) return "HyperOS $hyperOs"
-
-            val oplus = getMethod.invoke(null, "ro.build.version.oplusrom", "") as String
-            if (oplus.isNotEmpty()) return "ColorOS $oplus"
-
-            val oneUi = getMethod.invoke(null, "ro.build.version.oneui", "") as String
-            if (oneUi.isNotEmpty()) return "One UI $oneUi"
-
-            if (Build.BRAND.equals("google", ignoreCase = true)) return "Pixel Experience"
-
-            "Stock OS"
-        } catch (_: Exception) {
-            "Android"
-        }
-    }
-
-    private fun getFactoryDesignCapacityMah(context: Context): Int {
-        return try {
-            val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
-            val powerProfileInstance = powerProfileClass.getConstructor(Context::class.java).newInstance(context)
-            val getAveragePowerMethod = powerProfileClass.getMethod("getAveragePower", String::class.java)
-            val cap = getAveragePowerMethod.invoke(powerProfileInstance, "battery.capacity") as Double
-            cap.toInt()
-        } catch (_: Exception) {
-            4500
-        }
     }
 
     fun runResistanceStressTest() {
