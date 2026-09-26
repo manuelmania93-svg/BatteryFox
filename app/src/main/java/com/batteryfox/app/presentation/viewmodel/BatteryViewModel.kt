@@ -115,10 +115,11 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
 
-        val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        val rawMa = currentUa / 1000
+        val currentRaw = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        // Samsung Quirk: Galaxy devices report in mA directly (<10,000), while AOSP/Xiaomi report in uA (>10,000)
+        val rawMa = if (kotlin.math.abs(currentRaw) > 10_000) currentRaw / 1000 else currentRaw
 
-        // Normalize OEM current sign inversion (Xiaomi/Qualcomm vs Oppo/Samsung)
+        // Normalize OEM current sign inversion
         val currentMa = if (isCharging) kotlin.math.abs(rawMa) else -kotlin.math.abs(rawMa)
         val powerWatts = (voltage / 1000f) * (kotlin.math.abs(currentMa) / 1000f)
 
