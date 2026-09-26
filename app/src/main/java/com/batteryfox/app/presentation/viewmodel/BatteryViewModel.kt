@@ -64,6 +64,7 @@ data class DashboardState(
     val androidVersionString: String = "",
     val customOsName: String = "",
     val factoryLaunchOs: String = "",
+    val formattedDetailedAge: String = "Calculating...",
     val firstUsageDate: String? = null,
     val currentUptimeHours: Long = 0L,
     val manufactureDate: String? = null
@@ -137,9 +138,11 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val cycleDerivedYears = if ((cycles ?: 0) > 0) (cycles!!.toFloat() / 520f) else 1.0f
 
         // True Hardware Launch Detection via ro.product.first_api_level
+        // Multi-Sensor Precise Device Age Engine
+        val preciseAgeInfo = calculatePreciseDeviceAge(cycles)
+        val resolvedYears = preciseAgeInfo.yearsFloat
+        val detailedAgeString = preciseAgeInfo.formattedString
         val firstApi = getFirstApiLevel()
-        val launchYears = getEstimatedYearsFromApi(firstApi)
-        val resolvedYears = maxOf(buildYears, cycleDerivedYears, launchYears).coerceIn(0.5f, 8.5f)
 
         val devModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
         val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
@@ -226,6 +229,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             androidVersionString = osVersion,
             customOsName = customOs,
             factoryLaunchOs = firstOs,
+            formattedDetailedAge = detailedAgeString,
             firstUsageDate = exactFirstUse,
             currentUptimeHours = uptimeHours,
             manufactureDate = mfgDateFormatted,

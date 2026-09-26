@@ -88,6 +88,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             customOs = state.customOsName,
             firstAndroidVersion = state.factoryLaunchOs,
             yearsActive = state.yearsActive,
+            detailedAge = state.formattedDetailedAge,
             firstUsageDate = state.firstUsageDate,
             manufactureDate = state.manufactureDate,
             uptimeHours = state.currentUptimeHours

@@ -19,6 +19,7 @@ fun DeviceIdentityCard(
     customOs: String,
     firstAndroidVersion: String,
     yearsActive: Float,
+    detailedAge: String,
     firstUsageDate: String?,
     manufactureDate: String?,
     uptimeHours: Long,
@@ -56,7 +57,7 @@ fun DeviceIdentityCard(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = "${"%.1f".format(yearsActive)} YRS TOTAL",
+                        text = detailedAge,
                         color = FoxAccentOrange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
