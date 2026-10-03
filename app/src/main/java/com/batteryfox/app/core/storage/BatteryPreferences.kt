@@ -2,6 +2,7 @@ package com.batteryfox.app.core.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.batteryfox.app.core.engine.BatteryChargeSample
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -28,6 +29,9 @@ class BatteryPreferences(context: Context) {
         private const val KEY_HEALTH_HISTORY = "key_health_history"
         private const val KEY_VALIDATED_REPORT_VERSION = "key_validated_report_version"
         private const val VALIDATED_REPORT_VERSION = 1
+        private const val KEY_CHARGE_SAMPLES = "key_charge_samples"
+        private const val KEY_LAST_CHARGE_SAMPLE_TIMESTAMP = "key_last_charge_sample_timestamp"
+        private val CHARGE_SAMPLE_LOCK = Any()
     }
 
     fun saveStressTestResult(resistanceMilliOhms: Float, confidence: String) {
@@ -138,6 +142,63 @@ class BatteryPreferences(context: Context) {
             }
         } catch (_: org.json.JSONException) {
             emptyList()
+        }
+    }
+
+    fun saveChargeSample(sample: BatteryChargeSample): List<BatteryChargeSample> {
+        return synchronized(CHARGE_SAMPLE_LOCK) {
+            val lastRecordedAt = prefs.getLong(KEY_LAST_CHARGE_SAMPLE_TIMESTAMP, 0L)
+            if (lastRecordedAt > 0L && sample.timestamp - lastRecordedAt < 15 * 60 * 1_000L) {
+                return@synchronized emptyList()
+            }
+            val samples = getChargeSamples().toMutableList()
+            samples.add(sample)
+            val retained = samples
+                .filter { sample.timestamp - it.timestamp <= 60L * 24L * 60L * 60L * 1_000L }
+                .takeLast(6_000)
+            prefs.edit()
+                .putLong(KEY_LAST_CHARGE_SAMPLE_TIMESTAMP, sample.timestamp)
+                .putString(
+                    KEY_CHARGE_SAMPLES,
+                    JSONArray().apply {
+                        retained.forEach {
+                            put(
+                                JSONObject()
+                                    .put("timestamp", it.timestamp)
+                                    .put("level", it.levelPercent)
+                                    .put("chargeUah", it.chargeCounterUah)
+                            )
+                        }
+                    }.toString()
+                )
+                .apply()
+            retained
+        }
+    }
+
+    fun getChargeSamples(): List<BatteryChargeSample> {
+        return synchronized(CHARGE_SAMPLE_LOCK) {
+            val encoded = prefs.getString(KEY_CHARGE_SAMPLES, null) ?: return@synchronized emptyList()
+            try {
+                val array = JSONArray(encoded)
+                (0 until array.length()).mapNotNull { index ->
+                    val item = array.getJSONObject(index)
+                    val timestamp = item.optLong("timestamp", 0L)
+                    val level = item.optInt("level", -1)
+                    val charge = item.optLong("chargeUah", -1L)
+                    if (
+                        timestamp > 0L &&
+                        level in 0..100 &&
+                        charge in 100_000L..30_000_000L
+                    ) {
+                        BatteryChargeSample(timestamp, level, charge)
+                    } else {
+                        null
+                    }
+                }.sortedBy { it.timestamp }
+            } catch (_: org.json.JSONException) {
+                emptyList()
+            }
         }
     }
 

@@ -24,6 +24,14 @@ the device does not provide enough evidence for a health percentage.
   produce a health estimate.
 - Health history records report imports on this device. It is a trend of
   reported values, not a continuous or laboratory measurement.
+- BatteryFox can estimate capacity from Android's remaining-charge counter
+  (available on Android versions before 14 as well as newer ones, when the
+  device exposes it) while the dashboard is open. It needs at least three
+  consistent windows spanning meaningful battery-level changes. Samples are
+  taken while the dashboard is open and when the optional background monitor
+  is running. The result
+  and range are experimental; the charge counter may be unavailable,
+  vendor-dependent, or noisy. Samples are retained locally for up to 60 days.
 - The experimental current-pulse test is not calibrated against reference
   equipment and does not produce a health percentage.
 - App foreground time is shown as usage history, not as measured battery
@@ -58,7 +66,7 @@ proof of accuracy on real phones.
 
 | Validation area | Current evidence |
 | --- | --- |
-| Bug-report field parsing | JVM tests added for AOSP, Samsung, Qualcomm cycle data, and invalid/missing values; execution pending |
+| JVM estimators and parsing | Tests cover parser fields, invalid/missing values, and charge-counter estimate windows; execution is handled by CI |
 | Android build | Run `./gradlew assembleDebug` with JDK 17 and Android SDK 35 |
 | Physical-device accuracy | Not yet validated |
 | OEM/Android compatibility matrix | Not yet established |

@@ -179,6 +179,62 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             )
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = FoxSurface)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
+                Text(
+                    "BATTERYFOX LEARNED CAPACITY",
+                    color = FoxTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                val learned = state.learnedCapacity
+                Text(
+                    text = learned?.let { "~${it.capacityMah} mAh" } ?: "Collecting evidence",
+                    color = FoxTextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (learned != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Observed range: ${learned.lowerBoundMah}–${learned.upperBoundMah} mAh",
+                        color = FoxTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "${learned.observationCount} usable charge-change windows from ${learned.sampleCount} samples",
+                        color = FoxTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "Observed ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(learned.firstObservedAt))} – " +
+                            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(learned.lastObservedAt)),
+                        color = FoxTextSecondary,
+                        fontSize = 11.sp
+                    )
+                } else {
+                    val collectionMessage = if (state.chargeCounterAvailable) {
+                        "BatteryFox has ${state.chargeSampleCount} local samples; it needs at least 3 consistent windows spanning 12% or more charge changes."
+                    } else {
+                        "No usable charge-counter reading yet. Some phones or firmware versions do not expose this value to apps."
+                    }
+                    Text(collectionMessage, color = FoxTextSecondary, fontSize = 12.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Experimental capacity estimate from Android charge-counter history, not an OEM health reading. BatteryFox samples while this screen is open or the optional monitor is running; samples stay on this device.",
+                    color = FoxTextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // Telemetry Row 1 (Voltage + Temp)

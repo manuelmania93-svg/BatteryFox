@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.batteryfox.app.core.telemetry.BatteryChargeSampleRecorder
 import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
 import com.batteryfox.app.presentation.MainActivity
 
@@ -22,6 +23,7 @@ class BatteryMonitorService : Service() {
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            BatteryChargeSampleRecorder.record(context, intent, includeStoredSamples = false)
             val telemetry = BatteryTelemetryReader.read(context, intent)
             val direction = when (telemetry.isCharging) {
                 true -> "Charging"

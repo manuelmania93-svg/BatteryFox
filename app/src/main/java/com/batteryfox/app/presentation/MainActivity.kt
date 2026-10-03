@@ -38,6 +38,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshTelemetry()
+        viewModel.startForegroundSampling()
+    }
+
+    override fun onPause() {
+        viewModel.stopForegroundSampling()
+        super.onPause()
     }
 
     private fun handleIncomingShareIntent(intent: Intent?) {

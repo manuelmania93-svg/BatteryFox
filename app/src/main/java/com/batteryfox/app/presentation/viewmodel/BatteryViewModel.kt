@@ -12,6 +12,8 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.batteryfox.app.core.engine.AppDrainMetric
+import com.batteryfox.app.core.engine.BatteryCapacityEstimate
+import com.batteryfox.app.core.engine.BatteryCapacityEstimator
 import com.batteryfox.app.core.engine.InternalResistanceTester
 import com.batteryfox.app.core.engine.RetrospectiveDrainEngine
 import com.batteryfox.app.core.oem.OemDiagnosticLauncher
@@ -21,7 +23,10 @@ import com.batteryfox.app.core.service.BatteryMonitorService
 import com.batteryfox.app.core.storage.BatteryPreferences
 import com.batteryfox.app.core.storage.SavedHealthReading
 import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
+import com.batteryfox.app.core.telemetry.BatteryChargeSampleRecorder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +49,9 @@ data class DashboardState(
     val healthSource: String? = null,
     val healthMeasuredAt: Long? = null,
     val healthHistory: List<SavedHealthReading> = emptyList(),
+    val learnedCapacity: BatteryCapacityEstimate? = null,
+    val chargeSampleCount: Int = 0,
+    val chargeCounterAvailable: Boolean = false,
     val factoryDesignMah: Int? = null,
     val currentAvailableMah: Int? = null,
     val batteryTechnology: String? = null,
@@ -72,6 +80,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val permissionHelper = UsageStatsPermissionHelper(application)
     private val drainEngine = RetrospectiveDrainEngine(application)
     private val preferences = BatteryPreferences(application)
+    private var foregroundSamplingJob: Job? = null
 
     private val _state = MutableStateFlow(
         DashboardState(
@@ -79,6 +88,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             healthSource = preferences.getSavedParsedHealthSource(),
             healthMeasuredAt = preferences.getSavedParsedHealthTimestamp(),
             healthHistory = preferences.getHealthHistory(),
+            learnedCapacity = BatteryCapacityEstimator.estimate(preferences.getChargeSamples()),
+            chargeSampleCount = preferences.getChargeSamples().size,
+            chargeCounterAvailable = preferences.getChargeSamples().isNotEmpty(),
             cycleCount = preferences.getSavedParsedCycles(),
             factoryDesignMah = preferences.getSavedDesignMah(),
             currentAvailableMah = preferences.getSavedAvailableMah(),
@@ -102,6 +114,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         val voltage = telemetry.voltageMv
         val temp = telemetry.temperatureCelsius
         val tech = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)
+        val chargeSampleCollection = BatteryChargeSampleRecorder.record(context, intent)
+        val chargeSamples = chargeSampleCollection.samples
 
         var cycles: Int? = preferences.getSavedParsedCycles()
         var cycleSource: String? = cycles?.let { "Imported bug report" }
@@ -148,6 +162,10 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             wattage = telemetry.wattage,
             cycleCount = cycles,
             cycleCountSource = cycleSource,
+            learnedCapacity = BatteryCapacityEstimator.estimate(chargeSamples),
+            chargeSampleCount = chargeSamples.size,
+            chargeCounterAvailable = chargeSampleCollection.counterAvailable ||
+                chargeSamples.isNotEmpty(),
             factoryDesignMah = designMah,
             currentAvailableMah = preferences.getSavedAvailableMah(),
             batteryTechnology = tech,
@@ -161,6 +179,21 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             isServiceRunning = running,
             hasUsagePermission = hasUsage
         )
+    }
+
+    fun startForegroundSampling() {
+        if (foregroundSamplingJob?.isActive == true) return
+        foregroundSamplingJob = viewModelScope.launch {
+            while (true) {
+                delay(5 * 60 * 1_000L)
+                refreshTelemetry()
+            }
+        }
+    }
+
+    fun stopForegroundSampling() {
+        foregroundSamplingJob?.cancel()
+        foregroundSamplingJob = null
     }
 
     private fun getFirstApiLevel(): Int? {
@@ -331,6 +364,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                     statusMessage = "Parse failed: ${e.localizedMessage ?: "Invalid file"}"
                 )
             }
+
         }
     }
 
