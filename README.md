@@ -1,86 +1,115 @@
-# Battery Fox
+# BatteryFox
 
-Battery Fox looks for battery-health evidence that Android does not expose
-consistently through standard app APIs. It reads available Android telemetry,
-offers local bug-report import for additional OEM/system data, and reports when
-the device does not provide enough evidence for a health percentage.
+[![Build and tests](https://github.com/manuelmania93-svg/BatteryFox/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/manuelmania93-svg/BatteryFox/actions/workflows/build.yml)
 
-## What a reading means
+**BatteryFox searches for battery evidence that Android's standard battery
+screen may not show.** It combines Android telemetry, locally imported bug
+reports, available OEM diagnostics, and an experimental capacity estimator
+that learns from charge-counter readings over time.
 
-- Battery percentage, voltage, and temperature are Android-reported telemetry.
-  Current is converted from Android's microamp unit when the raw magnitude
-  supports it; small values use a labeled OEM-unit heuristic to preserve
-  compatibility with devices that report milliamps. That heuristic is not
-  independently validated and can be wrong on a device with very low current.
-  Individual fields may be unavailable or differ by device.
-- Battery health and capacity are only shown when a bug report contains a
-  valid device-reported health value or both capacity fields needed to derive a
-  ratio. The dashboard identifies which path was used and when the report was
-  imported.
-- A derived capacity ratio is still an estimate: a report's field labels and
-  semantics can vary by manufacturer. It is not independently validated as
-  usable battery capacity.
-- Cycle count is not a battery-health percentage. A cycle count alone does not
-  produce a health estimate.
-- Health history records report imports on this device. It is a trend of
-  reported values, not a continuous or laboratory measurement.
-- BatteryFox can estimate capacity from Android's remaining-charge counter
-  (available on Android versions before 14 as well as newer ones, when the
-  device exposes it) while the dashboard is open. It needs at least three
-  consistent windows spanning meaningful battery-level changes. Samples are
-  taken while the dashboard is open and when the optional background monitor
-  is running. The result
-  and range are experimental; the charge counter may be unavailable,
-  vendor-dependent, or noisy. Samples are retained locally for up to 60 days.
-- The experimental current-pulse test is not calibrated against reference
-  equipment and does not produce a health percentage.
-- App foreground time is shown as usage history, not as measured battery
-  drain. Ordinary apps cannot read all per-app battery attribution data.
-- Ordinary apps cannot rewrite the phone's fuel-gauge/PMIC calibration
-  registers. Battery Fox does not claim to calibrate them.
+The goal is to give people a more useful picture of their battery—not to imply
+that every Android phone exposes the same data or that an estimate is a
+laboratory measurement.
+
+## Features
+
+- **Live telemetry:** battery percentage, voltage, temperature, current, and
+  power when Android and the device provide usable readings.
+- **Bug-report analysis:** import a bug-report ZIP and look for supported
+  battery-health, capacity, and cycle-count fields. Parsing happens locally.
+- **Learned capacity:** estimate capacity from repeated Android charge-counter
+  and percentage observations. The estimator requires multiple consistent
+  charge-change windows and displays a range rather than treating one sample
+  as definitive.
+- **OEM diagnostics:** try opening selected manufacturer or Android diagnostic
+  screens. Availability and access depend on the phone and OS.
+- **Optional monitor:** a user-started foreground notification can collect
+  telemetry and charge-counter samples while running.
+- **Usage history:** optionally display foreground app time returned by
+  Android Usage Access. This is screen-time history, not measured app battery
+  drain.
+- **Evidence-first results:** show the reported source when available and
+  leave health unavailable when there is not enough evidence.
+
+## What the numbers mean
+
+BatteryFox keeps distinct evidence paths separate:
+
+- **Device-reported health** is shown when a supported bug-report field
+  explicitly contains a health value.
+- **Capacity-ratio health** is an estimate derived only when the imported
+  report contains both estimated and design capacity values. Vendor field
+  meanings may differ.
+- **Learned capacity** is an experimental BatteryFox estimate inferred from
+  repeated charge-counter changes. It is not an OEM-reported health percentage
+  and does not by itself determine battery health.
+- **Unavailable** means the phone did not provide enough usable evidence.
+
+The Android charge counter is not exposed consistently across devices. The
+learned-capacity estimate requires at least three consistent observations and
+meaningful charge-level changes; its range is a measure of observed sample
+spread, not a certified confidence interval. Android percentage rounding,
+charge-counter noise, charging state, and firmware behavior can all affect
+the result.
+
+Cycle count and device age are not battery-health measurements. The
+experimental current-pulse feature reports a voltage/current response only;
+it is not calibrated against reference equipment. Ordinary apps cannot rewrite
+the phone's fuel-gauge or PMIC calibration registers, and BatteryFox does not
+claim to do so.
+
+## Compatibility and validation
+
+- **Minimum Android version:** Android 8.0 (API 26).
+- **Build target:** Android SDK 35.
+- **Device coverage:** no physical-device compatibility or accuracy matrix has
+  been established yet. OEM, firmware, and Android-version differences affect
+  available telemetry and bug-report formats.
+- **Evidence:** automated JVM tests cover supported parser examples, invalid
+  and missing values, telemetry normalization, and estimator behavior. Passing
+  tests protects code behavior; it is not proof of accuracy on physical
+  phones.
+
+Before making accuracy claims, BatteryFox needs validation on named phone
+models and OS versions against suitable independent references. Unsupported
+readings should remain unavailable instead of being filled with generic
+capacity or health defaults.
 
 ## Privacy
 
-Bug-report ZIP files are parsed locally and are not uploaded by Battery Fox.
-Bug reports can contain sensitive information unrelated to the battery; only
-import a report you are comfortable processing on the device. Battery health
-history and the most recent parsed fields are stored in the app's private
-preferences.
+- Bug-report ZIP files are parsed on-device and are not uploaded by BatteryFox.
+  Bug reports may contain sensitive information unrelated to batteries; only
+  import a report you are comfortable processing locally.
+- Health history and charge-counter samples are stored in the app's private
+  preferences. Charge samples are retained locally for up to 60 days.
+- The optional app-usage view requires the user to grant Android Usage Access.
+  It displays foreground time, not measured battery consumption.
+- The monitor is user-started and can be stopped from the dashboard.
 
-The optional app-usage view requires the user to grant Android Usage Access.
-Battery Fox uses the returned foreground-time totals to display screen time,
-not a measured drain estimate.
+## Build, test, and run
 
-## Compatibility and evidence
-
-There is no promise that every Android phone exposes the same fields. OEM,
-firmware, and Android-version differences affect the available telemetry and
-bug-report format. Unsupported fields are left unavailable rather than filled
-with generic battery-capacity or health defaults.
-
-No physical-device compatibility or accuracy matrix has been established yet.
-Before making accuracy claims, validate on named phone models and OS versions,
-record which source worked, and compare health estimates to an appropriate
-independent reference. Parser unit tests are useful regression checks, not
-proof of accuracy on real phones.
-
-| Validation area | Current evidence |
-| --- | --- |
-| JVM estimators and parsing | Tests cover parser fields, invalid/missing values, and charge-counter estimate windows; execution is handled by CI |
-| Android build | Run `./gradlew assembleDebug` with JDK 17 and Android SDK 35 |
-| Physical-device accuracy | Not yet validated |
-| OEM/Android compatibility matrix | Not yet established |
-
-## Build and test
-
-Requirements: JDK 17, Android SDK 35, and the SDK path configured for Gradle
-(for example, in a local `local.properties` file).
+Requirements: JDK 17, Android SDK 35, and the Android SDK path configured for
+Gradle (for example, in a local `local.properties` file).
 
 ```bash
 ./gradlew testDebugUnitTest
 ./gradlew assembleDebug
 ```
 
-Android Studio can configure the SDK path and launch the app on a connected
-device or emulator. Device-specific behavior must still be verified on real
-hardware.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Android Studio can also open the project and run it on an emulator or connected
+device. Emulator runs cannot establish device-specific battery accuracy.
+
+## Contributing device evidence
+
+Compatibility reports are most useful when they include:
+
+- phone manufacturer and model;
+- Android version and OEM software version;
+- which reading or import path was tested;
+- whether the field was present and plausible;
+- comparison method and observed error, if a suitable reference was used.
+
+Do not post raw bug reports publicly: they may include personal or identifying
+device information. Share only the minimum redacted battery lines needed to
+reproduce a parser case.
