@@ -22,7 +22,8 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
         ZipInputStream(inputStream).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                if (entry.name.endsWith(".txt") && entry.name.contains("bugreport")) {
+                val entryName = entry.name.lowercase()
+                if (entryName.endsWith(".txt") && entryName.contains("bugreport")) {
                     return parseStream(zis)
                 }
                 entry = zis.nextEntry
@@ -36,59 +37,91 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
         var asocHealth: Float? = null
         var designCap: Int? = null
         var estimatedCap: Int? = null
-        var vendorDetected = "GENERIC_AOSP"
-        var mfgDateString: String? = null
-        var totalChargingHours: Long? = null
-
-        val mfgRegex = Regex("""(?:mfg_date|manufacture_date|battery_mfg|mSavedBatteryMfgDate):\\s*([\\d\\-/]+)""", RegexOption.IGNORE_CASE)
-        val chargingHoursRegex = Regex("""(?:total_charging_time|charge_time_total):\\s*(\\d+)""", RegexOption.IGNORE_CASE)
+        var vendorDetected = "UNKNOWN"
 
         val matched = mutableListOf<String>()
 
         stream.bufferedReader().forEachLine { line ->
             rules.aospAsoc.find(line)?.let {
-                asocHealth = it.groupValues[1].toFloatOrNull()
-                matched.add("aospAsoc")
+                val value = it.groupValues[1].toFloatOrNull()
+                if (value != null && value in 1f..100f) {
+                    asocHealth = value
+                    vendorDetected = "AOSP"
+                    matched.add("aospAsoc")
+                }
             }
             rules.aospCycle.find(line)?.let {
-                cycleCount = it.groupValues[1].toIntOrNull()
-                matched.add("aospCycle")
+                val value = it.groupValues[1].toIntOrNull()
+                if (value != null && value in 0..100_000) {
+                    cycleCount = value
+                    vendorDetected = "AOSP"
+                    matched.add("aospCycle")
+                }
             }
             rules.aospDesign.find(line)?.let {
-                designCap = it.groupValues[1].toIntOrNull()
-                matched.add("aospDesign")
+                val value = it.groupValues[1].toIntOrNull()
+                if (value != null && value in 100..50_000) {
+                    designCap = value
+                    vendorDetected = "AOSP"
+                    matched.add("aospDesign")
+                }
             }
             rules.aospEstimated.find(line)?.let {
-                estimatedCap = it.groupValues[1].toIntOrNull()
-                matched.add("aospEstimated")
+                val value = it.groupValues[1].toIntOrNull()
+                if (value != null && value in 100..50_000) {
+                    estimatedCap = value
+                    vendorDetected = "AOSP"
+                    matched.add("aospEstimated")
+                }
             }
 
             rules.samsungAsoc.find(line)?.let {
-                if (asocHealth == null) asocHealth = it.groupValues[1].toFloatOrNull()
-                vendorDetected = "SAMSUNG_ONEUI"
-                matched.add("samsungAsoc")
-            }
-            rules.samsungUsage.find(line)?.let {
-                if (cycleCount == null) {
-                    val raw = it.groupValues[1].toIntOrNull() ?: 0
-                    cycleCount = if (raw > 1000) raw / 100 else raw
+                val value = it.groupValues[1].toFloatOrNull()
+                if (asocHealth == null && value != null && value in 1f..100f) {
+                    asocHealth = value
                     vendorDetected = "SAMSUNG_ONEUI"
-                    matched.add("samsungUsage")
+                    matched.add("samsungAsoc")
+                }
+            }
+            rules.samsungDesign.find(line)?.let {
+                val value = it.groupValues[1].toIntOrNull()
+                if (value != null && value in 100..50_000) {
+                    designCap = designCap ?: value
+                    vendorDetected = "SAMSUNG_ONEUI"
+                    matched.add("samsungDesign")
                 }
             }
 
             rules.qcomCycle.find(line)?.let {
                 if (cycleCount == null) {
-                    cycleCount = it.groupValues[1].toIntOrNull()
-                    vendorDetected = "QUALCOMM_BMS"
-                    matched.add("qcomCycle")
+                    val value = it.groupValues[1].toIntOrNull()
+                    if (value != null && value in 0..100_000) {
+                        cycleCount = value
+                        vendorDetected = "QUALCOMM_BMS"
+                        matched.add("qcomCycle")
+                    }
                 }
             }
         }
 
-        val design = designCap ?: 5000
-        val finalEstimated = estimatedCap ?: ((design * (asocHealth ?: 100f)) / 100f).toInt()
-        val finalHealth = asocHealth ?: ((finalEstimated.toFloat() / design.toFloat()) * 100f).coerceIn(0f, 100f)
+        val design = designCap
+        val estimated = estimatedCap
+        val capacityRatioHealth = if (
+            asocHealth == null &&
+            design != null &&
+            estimated != null &&
+            estimated <= design
+        ) {
+            (estimated.toFloat() / design) * 100f
+        } else {
+            null
+        }
+        val finalHealth = asocHealth ?: capacityRatioHealth
+        val healthSource = when {
+            asocHealth != null -> "Bug report: device-reported health"
+            capacityRatioHealth != null -> "Bug report: estimated/design capacity ratio"
+            else -> null
+        }
 
         val allExpected = listOf("asoc", "cycles", "designCap", "estimatedCap")
         val missed = allExpected.filter { field ->
@@ -104,13 +137,14 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
         return ParseResult(
             report = BatteryHealthReport(
                 healthPercent = finalHealth,
-                cycleCount = cycleCount ?: 0,
-                designCapacityMah = design,
-                currentCapacityMah = finalEstimated,
+                cycleCount = cycleCount,
+                designCapacityMah = designCap,
+                currentCapacityMah = estimatedCap,
+                healthSource = healthSource,
                 internalResistanceMilliOhms = null,
                 degradationRatePerMonth = null,
                 engineUsed = DiagnosticEngine.BUG_REPORT_STREAM,
-                isHardwareBacked = true
+                isHardwareBacked = asocHealth != null
             ),
             telemetry = ParseTelemetry(
                 matchedFields = matched.distinct(),

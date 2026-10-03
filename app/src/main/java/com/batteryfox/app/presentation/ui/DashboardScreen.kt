@@ -1,5 +1,8 @@
 package com.batteryfox.app.presentation.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -21,19 +24,32 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import com.batteryfox.app.R
 import com.batteryfox.app.presentation.theme.*
 import com.batteryfox.app.presentation.ui.components.BatteryCareCard
-import com.batteryfox.app.presentation.ui.components.CalibrationCard
 import com.batteryfox.app.presentation.ui.components.DeviceIdentityCard
-import com.batteryfox.app.presentation.ui.components.LifetimeWearCard
 import com.batteryfox.app.presentation.ui.components.RetrospectiveDrainCard
 import com.batteryfox.app.presentation.viewmodel.BatteryViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun DashboardScreen(viewModel: BatteryViewModel) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val scrollState = rememberScrollState()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.toggleMonitorService()
+        } else {
+            viewModel.setStatusMessage("Notification permission is needed to show the background monitor.")
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -71,7 +87,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             }
             Surface(color = FoxSurfaceVariant, shape = RoundedCornerShape(20.dp)) {
                 Text(
-                    text = "${state.batteryPercent}% SoC",
+                    text = "${state.batteryPercent?.let { "$it%" } ?: "N/A"} SoC",
                     color = FoxElectricGreen,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
@@ -87,8 +103,6 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             androidVersion = state.androidVersionString,
             customOs = state.customOsName,
             firstAndroidVersion = state.factoryLaunchOs,
-            yearsActive = state.yearsActive,
-            detailedAge = state.formattedDetailedAge,
             firstUsageDate = state.firstUsageDate,
             manufactureDate = state.manufactureDate,
             uptimeHours = state.currentUptimeHours
@@ -96,7 +110,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Hero Card: State of Health + Real Hardware Capacity
+        // Battery health is only shown when a report provides usable evidence.
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -106,10 +120,10 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("HARDWARE STATE OF HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("BATTERY HEALTH", color = FoxTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = if (state.estimatedHealthPercent != null) "${state.estimatedHealthPercent!!.toInt()}%" else "--%",
+                    text = state.estimatedHealthPercent?.let { "${it.toInt()}%" } ?: "N/A",
                     color = if ((state.estimatedHealthPercent ?: 100f) >= 80f) FoxTextPrimary else FoxAccentOrange,
                     fontSize = 54.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -117,7 +131,11 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = if (state.estimatedHealthPercent != null) "${state.currentAvailableMah} mAh usable / ${state.factoryDesignMah} mAh design" else "-- mAh usable / ${state.factoryDesignMah} mAh design",
+                    text = if (state.currentAvailableMah != null && state.factoryDesignMah != null) {
+                        "${state.currentAvailableMah} mAh estimated / ${state.factoryDesignMah} mAh design"
+                    } else {
+                        "Capacity data unavailable"
+                    },
                     color = FoxTextSecondary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
@@ -125,59 +143,80 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    color = if (state.estimatedHealthPercent == null) FoxSurfaceVariant else if (state.estimatedHealthPercent!! >= 80f) FoxElectricGreen.copy(alpha = 0.15f) else FoxAccentOrange.copy(alpha = 0.15f),
+                    color = FoxSurfaceVariant,
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    val badgeText = when {
-                        state.cycleCount != null -> if (state.estimatedHealthPercent!! >= 80f) "HEALTHY CELL (CYCLES)" else "AGED (SERVICE RECOMMENDED)"
-                        else -> "ESTIMATED (${"%.1f".format(state.yearsActive)} YRS ACTIVE)"
-                    }
-                    val badgeColor = if ((state.estimatedHealthPercent ?: 100f) >= 80f) FoxElectricGreen else FoxAccentOrange
-
                     Text(
-                        text = badgeText,
-                        color = badgeColor,
+                        text = state.healthSource ?: "No health measurement available",
+                        color = FoxTextSecondary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                     )
                 }
+                state.healthMeasuredAt?.let { timestamp ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Imported ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(timestamp))}",
+                        color = FoxTextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
             }
+        }
+
+        if (state.healthHistory.size >= 2) {
+            val first = state.healthHistory.first()
+            val latest = state.healthHistory.last()
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Report trend: ${"%.1f".format(first.healthPercent)}% (${dateFormat.format(Date(first.timestamp))}) → " +
+                    "${"%.1f".format(latest.healthPercent)}% (${dateFormat.format(Date(latest.timestamp))})",
+                color = FoxTextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Telemetry Row 1 (Voltage + Temp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            val voltLabel = if (state.isDualCell) "VOLTS (2S DUAL)" else "VOLTAGE"
-            TelemetryCard(title = voltLabel, value = "${state.voltageMv} mV", modifier = Modifier.weight(1f))
-            TelemetryCard(title = "TEMP", value = "${state.temperatureCelsius} °C", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "VOLTAGE", value = state.voltageMv?.let { "$it mV" } ?: "N/A", modifier = Modifier.weight(1f))
+            TelemetryCard(title = "TEMP", value = state.temperatureCelsius?.let { "%.1f °C".format(it) } ?: "N/A", modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         // Telemetry Row 2 (Current + Power Watts)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TelemetryCard(title = "CURRENT", value = "${state.currentMa} mA", modifier = Modifier.weight(1f))
-            val formattedWatts = String.format("%.2f", state.wattage)
-            TelemetryCard(title = "POWER", value = "$formattedWatts W", modifier = Modifier.weight(1f))
+            TelemetryCard(
+                title = "CURRENT",
+                value = state.currentMa?.let { "$it mA" } ?: "N/A",
+                modifier = Modifier.weight(1f),
+                detail = state.currentSource
+            )
+            TelemetryCard(title = "POWER", value = state.wattage?.let { "%.2f W".format(it) } ?: "N/A", modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         // Telemetry Row 3 (Capacity Details)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TelemetryCard(title = "FACTORY DESIGN", value = "${state.factoryDesignMah} mAh", modifier = Modifier.weight(1f))
-            TelemetryCard(title = "LIFETIME CYCLES", value = state.cycleCount?.toString() ?: "N/A", modifier = Modifier.weight(1f))
+            TelemetryCard(
+                title = "REPORTED DESIGN",
+                value = state.factoryDesignMah?.let { "$it mAh" } ?: "N/A",
+                modifier = Modifier.weight(1f),
+                detail = state.factoryDesignMah?.let { "Bug report" }
+            )
+            TelemetryCard(
+                title = "LIFETIME CYCLES",
+                value = state.cycleCount?.toString() ?: "N/A",
+                modifier = Modifier.weight(1f),
+                detail = state.cycleCountSource
+            )
         }
-
-        // --- Milestone v1.1: 3-4 Year Lifetime Degradation Graph ---
-        Spacer(modifier = Modifier.height(16.dp))
-        LifetimeWearCard(
-            currentHealthPercent = state.estimatedHealthPercent ?: 75f,
-            cycleCount = state.cycleCount ?: 0,
-            yearsActive = state.yearsActive
-        )
 
         // --- Tier 4: 30-Day Retrospective App Drain Card ---
         Spacer(modifier = Modifier.height(16.dp))
@@ -190,22 +229,25 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
         // --- Hardware Chemistry & Smart Battery Care Suite ---
         Spacer(modifier = Modifier.height(16.dp))
         BatteryCareCard(
-            technology = state.batteryTechnology,
-            isDualCell = state.isDualCell
+            technology = state.batteryTechnology
         )
 
-        // --- Isolated Legit PMIC Calibration Card ---
         Spacer(modifier = Modifier.height(16.dp))
-        CalibrationCard(
-            step = state.calibrationStep,
-            voltageMv = state.voltageMv,
-            isDualCell = state.isDualCell,
-            currentMa = state.currentMa,
-            wattage = state.wattage,
-            saturationMinutesRemaining = state.saturationMinutesRemaining,
-            onStart = { viewModel.startCalibrationWizard() },
-            onCancel = { viewModel.cancelCalibration() }
-        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = FoxSurface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Battery gauge calibration", color = FoxTextPrimary, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Android does not let ordinary apps rewrite the phone's fuel-gauge hardware. Avoid deliberate full-drain cycles; use the manufacturer's service diagnostics if the percentage behaves abnormally.",
+                    color = FoxTextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
 
         // Foreground Service Toggle Card
         Spacer(modifier = Modifier.height(14.dp))
@@ -222,12 +264,26 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Background Monitor Service", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text("Tracks live mA, wattage, and temperature in notification.", color = FoxTextSecondary, fontSize = 11.sp)
+                    Text("Tracks Android-reported current, power, and temperature when available.", color = FoxTextSecondary, fontSize = 11.sp)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = state.isServiceRunning,
-                    onCheckedChange = { viewModel.toggleMonitorService() }
+                    onCheckedChange = { enabled ->
+                        if (!enabled) {
+                            viewModel.toggleMonitorService()
+                        } else if (
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            viewModel.toggleMonitorService()
+                        }
+                    }
                 )
             }
         }
@@ -246,13 +302,13 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             colors = CardDefaults.cardColors(containerColor = FoxSurface)
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                Text("10-Second Impedance Test", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Experimental Current-Pulse Test", color = FoxTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Measures internal resistance (R_int) to calculate cell wear.", color = FoxTextSecondary, fontSize = 12.sp)
+                Text("Experimental voltage/current response only; it is not a calibrated battery-health measurement.", color = FoxTextSecondary, fontSize = 12.sp)
 
                 state.measuredResistanceMilliOhms?.let { res ->
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Resistance: ${res.toInt()} mΩ (${state.testConfidence ?: ""})", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
+                    Text("Resistance: ${res.toInt()} mΩ | sample consistency: ${state.testConfidence ?: "N/A"}", color = FoxAccentOrange, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -264,7 +320,7 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
                 ) {
                     Text(
-                        if (state.isTestingResistance) "Testing Pulses..." else "Run 10-Second Health Test",
+                        if (state.isTestingResistance) "Testing..." else "Run Experimental Test",
                         color = Color.Black,
                         fontWeight = FontWeight.Bold
                     )
@@ -295,13 +351,19 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                 Text(if (state.isParsingBugReport) "Parsing..." else "Import Bug Report", fontSize = 12.sp)
             }
         }
+        Text(
+            "The selected bug-report ZIP is parsed on this device and is not uploaded by Battery Fox. Bug reports may contain other sensitive device information.",
+            color = FoxTextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
 
         Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
 @Composable
-fun TelemetryCard(title: String, value: String, modifier: Modifier = Modifier) {
+fun TelemetryCard(title: String, value: String, modifier: Modifier = Modifier, detail: String? = null) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -311,6 +373,10 @@ fun TelemetryCard(title: String, value: String, modifier: Modifier = Modifier) {
             Text(title, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(value, color = FoxTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            detail?.let {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(it, color = FoxTextSecondary, fontSize = 10.sp)
+            }
         }
     }
 }

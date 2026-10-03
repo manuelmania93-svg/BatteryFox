@@ -9,12 +9,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
 import com.batteryfox.app.presentation.MainActivity
-import kotlin.math.abs
 
 class BatteryMonitorService : Service() {
 
@@ -23,29 +22,17 @@ class BatteryMonitorService : Service() {
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
-            val soc = if (scale > 0) (level * 100) / scale else -1
-            val voltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
-            val tempRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
-            val temp = tempRaw / 10f
-
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-
-            val currentUa = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            val rawMa = currentUa / 1000
-            val currentMa = if (isCharging) abs(rawMa) else -abs(rawMa)
-            val watts = (voltage / 1000f) * (abs(currentMa) / 1000f)
-
-            val statusText = if (currentMa > 0) {
-                "Charging: +${currentMa} mA (%.1f W) | %.1f °C".format(watts, temp)
-            } else {
-                "Discharging: ${currentMa} mA (%.1f W) | %.1f °C".format(watts, temp)
+            val telemetry = BatteryTelemetryReader.read(context, intent)
+            val direction = when (telemetry.isCharging) {
+                true -> "Charging"
+                false -> "Discharging"
+                null -> "Current"
             }
-
-            updateNotification(soc, statusText)
+            val currentSource = telemetry.currentSource?.let { " ($it)" } ?: ""
+            val current = telemetry.currentMa?.let { "$direction: ${it} mA$currentSource" } ?: "Current unavailable"
+            val watts = telemetry.wattage?.let { " | %.1f W".format(it) } ?: ""
+            val temp = telemetry.temperatureCelsius?.let { " | %.1f °C".format(it) } ?: ""
+            updateNotification(telemetry.levelPercent ?: 0, "$current$watts$temp")
         }
     }
 
@@ -57,8 +44,8 @@ class BatteryMonitorService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         unregisterReceiver(batteryReceiver)
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -70,7 +57,7 @@ class BatteryMonitorService : Service() {
                 "Battery Fox Telemetry",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Live battery current, wattage and calibration tracking"
+                description = "Live Android-reported battery telemetry when available"
                 setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)

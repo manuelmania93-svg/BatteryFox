@@ -18,8 +18,6 @@ fun DeviceIdentityCard(
     androidVersion: String,
     customOs: String,
     firstAndroidVersion: String,
-    yearsActive: Float,
-    detailedAge: String,
     firstUsageDate: String?,
     manufactureDate: String?,
     uptimeHours: Long,
@@ -52,37 +50,24 @@ fun DeviceIdentityCard(
                         maxLines = 1
                     )
                 }
-                Surface(
-                    color = FoxSurfaceVariant,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = detailedAge,
-                        color = FoxAccentOrange,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(color = FoxSurfaceVariant, thickness = 0.5.dp)
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Sub-grid 1: Factory Launch Era vs First Usage Date
+            // System-reported dates and platform fields are shown only when available.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("FACTORY LAUNCH", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text("INITIAL ANDROID VERSION", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(firstAndroidVersion, color = FoxTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    val dateLabel = if (firstUsageDate != null) "FIRST USAGE DATE" else "CURRENT RUNTIME"
+                    val dateLabel = if (firstUsageDate != null) "REPORTED FIRST-USE DATE" else "CURRENT RUNTIME"
                     val dateValue = firstUsageDate ?: "${uptimeHours}h active boot"
                     Text(dateLabel, color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(2.dp))
@@ -98,7 +83,7 @@ fun DeviceIdentityCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        Text("PACK MANUFACTURE DATE", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text("REPORTED PACK DATE", color = FoxTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(mfg, color = FoxAccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }

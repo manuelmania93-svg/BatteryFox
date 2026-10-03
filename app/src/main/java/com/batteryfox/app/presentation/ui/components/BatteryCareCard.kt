@@ -13,8 +13,7 @@ import com.batteryfox.app.presentation.theme.*
 
 @Composable
 fun BatteryCareCard(
-    technology: String,
-    isDualCell: Boolean,
+    technology: String?,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -30,14 +29,14 @@ fun BatteryCareCard(
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
-                        text = "Smart Battery Care & Chemistry",
+                        text = "Battery Care",
                         color = FoxTextPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         maxLines = 1
                     )
                     Text(
-                        text = "Hardware-tailored longevity guidelines",
+                        text = "General lithium-ion battery guidance",
                         color = FoxTextSecondary,
                         fontSize = 11.sp,
                         maxLines = 1
@@ -47,9 +46,8 @@ fun BatteryCareCard(
                     color = FoxSurfaceVariant,
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    val techLabel = if (isDualCell) "$technology (2S Dual)" else technology
                     Text(
-                        text = techLabel,
+                        text = technology ?: "Technology unavailable",
                         color = FoxElectricGreen,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp,
@@ -62,30 +60,22 @@ fun BatteryCareCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             CareTipItem(
-                title = "1. Maintain the 20% – 80% Operating Window",
-                description = "Voltage stress spikes exponentially above 80% (>4.2V/cell), causing parasitic electrolyte oxidation. Keeping charge below 80% doubles cycle life."
+                title = "Limit heat when practical",
+                description = "High temperatures can accelerate battery aging. Avoid leaving the phone hot or in direct sun, especially while charging."
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
             CareTipItem(
-                title = "2. Keep Temperatures Below 35°C",
-                description = "High heat during fast charging rapidly thickens the internal SEI barrier. Remove thick cases while fast-charging and never game while plugged in."
+                title = "Use built-in optimized charging",
+                description = "If your phone offers a charge limit or optimized charging, enable it if it suits your routine. These controls are optional; normal charging is fine."
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (isDualCell) {
-                CareTipItem(
-                    title = "3. Series 2S Dual-Cell Considerations",
-                    description = "Your phone charges two cells in series to enable ultra-fast wattage. Avoid micro-discharges (<10%) which accelerate cell imbalance across the pair."
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
             CareTipItem(
-                title = "4. Calibrate Only When Drift Occurs",
-                description = "Deep 0% discharges cause mechanical anode strain. Run the 4-stage PMIC Calibration Wizard only once every 2-3 months to re-anchor endpoints."
+                title = "Avoid repeated deep discharges",
+                description = "There is no need to deliberately drain the phone to 0% to calibrate it. If the battery indicator behaves abnormally, follow the manufacturer's support guidance."
             )
         }
     }

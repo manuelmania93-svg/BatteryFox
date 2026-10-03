@@ -33,13 +33,13 @@ fun RetrospectiveDrainCard(
             ) {
                 Column {
                     Text(
-                        text = "30-Day Retrospective Drain",
+                        text = "30-Day App Screen Time",
                         color = FoxTextPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
                     Text(
-                        text = "Historical app drain prior to installation",
+                        text = "Usage history—not measured battery drain",
                         color = FoxTextSecondary,
                         fontSize = 11.sp
                     )
@@ -62,7 +62,7 @@ fun RetrospectiveDrainCard(
 
             if (!hasPermission) {
                 Text(
-                    text = "Android prevents unprivileged apps from reading past app usage. Grant Usage Access to calculate which apps drained your battery before Battery Fox was installed.",
+                    text = "Android limits access to past app usage. Grant Usage Access to see which apps had the most foreground time. This is not a measurement of battery drain.",
                     color = FoxTextSecondary,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
@@ -78,7 +78,7 @@ fun RetrospectiveDrainCard(
                 }
             } else {
                 if (drainList.isEmpty()) {
-                    Text("Aggregating historical usage statistics...", color = FoxTextSecondary, fontSize = 12.sp)
+                    Text("No eligible app-usage history was returned by Android.", color = FoxTextSecondary, fontSize = 12.sp)
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         drainList.forEach { metric ->
@@ -96,17 +96,11 @@ fun RetrospectiveDrainCard(
                                         maxLines = 1
                                     )
                                     Text(
-                                        text = "${"%.1f".format(metric.foregroundHours)} hrs screen-time (~${metric.estimatedDrainMah} mAh)",
+                                        text = "${"%.1f".format(metric.foregroundHours)} hrs foreground time",
                                         color = FoxTextSecondary,
                                         fontSize = 11.sp
                                     )
                                 }
-                                Text(
-                                    text = "~${"%.1f".format(metric.drainPercent)}%",
-                                    color = FoxAccentOrange,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
                             }
                             HorizontalDivider(color = FoxSurfaceVariant, thickness = 0.5.dp)
                         }

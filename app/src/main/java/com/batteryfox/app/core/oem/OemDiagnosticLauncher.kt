@@ -1,11 +1,17 @@
 package com.batteryfox.app.core.oem
 
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 
 class OemDiagnosticLauncher(private val context: Context) {
+
+    companion object {
+        private const val TAG = "OemDiagnosticLauncher"
+    }
 
     fun launchHighestPriorityDiagnostic(): Boolean {
         val candidates = listOf(
@@ -26,10 +32,12 @@ class OemDiagnosticLauncher(private val context: Context) {
                     context.startActivity(intent)
                     return true
                 }
-            } catch (e: SecurityException) {
-                // Fallback to next candidate
-            } catch (e: Exception) {
-                // Fallback to next candidate
+            } catch (error: SecurityException) {
+                Log.w(TAG, "OEM diagnostic launch was denied", error)
+            } catch (error: ActivityNotFoundException) {
+                Log.i(TAG, "OEM diagnostic activity is unavailable", error)
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "OEM diagnostic intent was rejected", error)
             }
         }
         return false

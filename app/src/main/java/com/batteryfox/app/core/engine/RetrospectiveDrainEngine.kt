@@ -11,9 +11,7 @@ import java.util.Calendar
 data class AppDrainMetric(
     val packageName: String,
     val appName: String,
-    val foregroundHours: Float,
-    val estimatedDrainMah: Int,
-    val drainPercent: Float
+    val foregroundHours: Float
 )
 
 class RetrospectiveDrainEngine(private val context: Context) {
@@ -22,7 +20,7 @@ class RetrospectiveDrainEngine(private val context: Context) {
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     private val packageManager: PackageManager = context.packageManager
 
-    suspend fun getTopHistoricalDrainers(totalDesignMah: Int): List<AppDrainMetric> = withContext(Dispatchers.IO) {
+    suspend fun getTopHistoricalDrainers(): List<AppDrainMetric> = withContext(Dispatchers.IO) {
         if (!permissionHelper.hasUsageStatsAccess()) return@withContext emptyList()
 
         val calendar = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -30) }
@@ -53,9 +51,6 @@ class RetrospectiveDrainEngine(private val context: Context) {
 
         for ((pkg, timeMs) in filtered) {
             val hours = timeMs.toFloat() / (1000f * 60f * 60f)
-            // Baseline smartphone app drain: ~280-420 mA per active screen hour
-            val estimatedMah = (hours * 340f).toInt()
-            val drainPct = if (totalDesignMah > 0) (estimatedMah.toFloat() / totalDesignMah.toFloat()) * 100f else 0f
 
             val appLabel = try {
                 val appInfo = packageManager.getApplicationInfo(pkg, 0)
@@ -68,9 +63,7 @@ class RetrospectiveDrainEngine(private val context: Context) {
                 AppDrainMetric(
                     packageName = pkg,
                     appName = appLabel,
-                    foregroundHours = hours,
-                    estimatedDrainMah = estimatedMah,
-                    drainPercent = drainPct
+                    foregroundHours = hours
                 )
             )
         }

@@ -5,7 +5,7 @@
     <!-- Battery and hardware telemetry -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Optional: needed only for the 30-day retrospective drain engine (user-toggled) -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -47,6 +47,15 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".core.service.BatteryMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Ongoing battery telemetry notification requested by the user" />
+        </service>
 
     </application>
 </manifest>

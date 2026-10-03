@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -21,7 +22,6 @@ class InternalResistanceTester(private val context: Context) {
 
     data class MultiSampleResult(
         val finalResistanceMilliOhms: Float,
-        val estimatedHealthPercent: Float,
         val confidence: TestConfidence,
         val sampleCount: Int
     )
@@ -41,6 +41,14 @@ class InternalResistanceTester(private val context: Context) {
         if (tempCelsius !in 10.0f..45.0f) {
             return@withContext Result.failure(IllegalStateException("Battery temp must be 10°C–45°C (Current: ${tempCelsius}°C)."))
         }
+        val initialStatus = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        if (
+            initialStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+            initialStatus == BatteryManager.BATTERY_STATUS_FULL ||
+            intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        ) {
+            return@withContext Result.failure(IllegalStateException("Disconnect the charger before running this experimental test."))
+        }
 
         val rawSamples = mutableListOf<Float>()
 
@@ -52,11 +60,18 @@ class InternalResistanceTester(private val context: Context) {
             }
 
             val vIdleMv = getBatteryVoltageMv()
-            val iIdleUa = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                ?: return@withContext Result.failure(IllegalStateException("Battery voltage is unavailable."))
+            val iIdle = BatteryTelemetryReader.normalizeCurrent(
+                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+                initialStatus
+            )
+            if (iIdle == null) {
+                return@withContext Result.failure(IllegalStateException("Battery current is unavailable."))
+            }
             delay(1000)
 
             val isRunning = AtomicBoolean(true)
-            val cores = Runtime.getRuntime().availableProcessors()
+            val cores = Runtime.getRuntime().availableProcessors().coerceAtMost(2)
             val threads = List(cores) {
                 Thread {
                     var x = 1.0001
@@ -64,19 +79,25 @@ class InternalResistanceTester(private val context: Context) {
                 }
             }
             threads.forEach { it.start() }
-            delay(1800)
-
-            val vLoadMv = getBatteryVoltageMv()
-            val iLoadUa = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-
-            isRunning.set(false)
-            threads.forEach { it.join(300) }
+            val loadSample = try {
+                delay(1800)
+                getBatteryVoltageMv() to BatteryTelemetryReader.normalizeCurrent(
+                    batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+                    initialStatus
+                )
+            } finally {
+                isRunning.set(false)
+                threads.forEach { it.join(1000) }
+            }
             delay(1000)
+            val vLoadMv = loadSample.first ?: continue
+            val iLoad = loadSample.second ?: continue
+            if (iLoad.source != iIdle.source) continue
 
             val deltaV = abs((vIdleMv - vLoadMv) / 1000f)
-            val deltaI = abs((iLoadUa - iIdleUa) / 1_000_000f)
-            val effectiveDeltaI = if (deltaI < 0.15f) 0.85f else deltaI
-            val rMilliOhms = (deltaV / effectiveDeltaI) * 1000f
+            val deltaI = abs(iLoad.milliAmps - iIdle.milliAmps) / 1_000f
+            if (deltaI < 0.15f) continue
+            val rMilliOhms = (deltaV / deltaI) * 1000f
 
             if (rMilliOhms in 15f..600f) {
                 rawSamples.add(rMilliOhms)
@@ -98,24 +119,18 @@ class InternalResistanceTester(private val context: Context) {
             else -> TestConfidence.LOW
         }
 
-        val health = when {
-            finalResistance <= 70f -> 100f
-            finalResistance >= 180f -> 65f
-            else -> 100f - ((finalResistance - 70f) / (180f - 70f)) * 35f
-        }.coerceIn(50f, 100f)
-
         Result.success(
             MultiSampleResult(
                 finalResistanceMilliOhms = finalResistance,
-                estimatedHealthPercent = health,
                 confidence = confidence,
                 sampleCount = cleanSamples.size
             )
         )
     }
 
-    private fun getBatteryVoltageMv(): Float {
+    private fun getBatteryVoltageMv(): Float? {
         val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        return intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 4000)?.toFloat() ?: 4000f
+        val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+        return voltage.takeIf { it in 2_000..20_000 }?.toFloat()
     }
 }
