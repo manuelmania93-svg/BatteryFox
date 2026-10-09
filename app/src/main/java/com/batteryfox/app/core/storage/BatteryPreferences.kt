@@ -6,12 +6,6 @@ import com.batteryfox.app.core.engine.BatteryChargeSample
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class SavedHealthReading(
-    val timestamp: Long,
-    val healthPercent: Float,
-    val source: String
-)
-
 class BatteryPreferences(context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("battery_fox_prefs", Context.MODE_PRIVATE)
@@ -26,6 +20,9 @@ class BatteryPreferences(context: Context) {
         private const val KEY_PARSED_AVAILABLE_MAH = "key_parsed_available_mah"
         private const val KEY_PARSED_HEALTH_SOURCE = "key_parsed_health_source"
         private const val KEY_PARSED_HEALTH_TIMESTAMP = "key_parsed_health_timestamp"
+        private const val KEY_PARSED_HEALTH_MEASURED_AT = "key_parsed_health_measured_at"
+        private const val KEY_PARSED_HEALTH_KIND = "key_parsed_health_kind"
+        private const val KEY_RESET_AT = "key_battery_reset_at"
         private const val KEY_HEALTH_HISTORY = "key_health_history"
         private const val KEY_VALIDATED_REPORT_VERSION = "key_validated_report_version"
         private const val VALIDATED_REPORT_VERSION = 1
@@ -51,49 +48,92 @@ class BatteryPreferences(context: Context) {
 
     fun getSavedTestTimestamp(): Long = prefs.getLong(KEY_TEST_TIMESTAMP, 0L)
 
+    /**
+     * Saves an imported report. Repeated imports of the same report, and reports captured before
+     * the last battery reset, change nothing and are reported through the returned outcome.
+     */
     fun saveBugReportData(
         health: Float?,
         cycles: Int?,
         designMah: Int?,
         availableMah: Int?,
-        healthSource: String?
-    ) {
-        val editor = prefs.edit()
+        healthSource: String?,
+        reportId: String? = null,
+        deviceId: String? = null,
+        measuredAt: Long? = null,
+        importedAt: Long = System.currentTimeMillis()
+    ): HealthHistory.AddOutcome {
         val validHealth = health?.takeIf { it in 1f..100f }
         val validSource = healthSource?.takeIf(String::isNotBlank)
+        var reading: SavedHealthReading? = null
+        var updatedHistory: List<SavedHealthReading>? = null
+        if (validHealth != null && validSource != null) {
+            reading = SavedHealthReading(
+                importedAt = importedAt,
+                measuredAt = measuredAt,
+                healthPercent = validHealth,
+                source = validSource,
+                sourceKind = HealthHistory.kindFor(validSource),
+                reportId = reportId,
+                deviceId = deviceId
+            )
+            val result = HealthHistory.add(getHealthHistory(), reading, getBatteryResetAt())
+            if (result.outcome != HealthHistory.AddOutcome.ADDED) return result.outcome
+            updatedHistory = result.history
+        } else if (reportId != null && getHealthHistory().any { it.reportId == reportId }) {
+            return HealthHistory.AddOutcome.DUPLICATE
+        }
+
+        val editor = prefs.edit()
         val validCycles = cycles?.takeIf { it in 0..100_000 }
         val validDesign = designMah?.takeIf { it in 100..50_000 }
         val validAvailable = availableMah?.takeIf { it in 100..50_000 }
         editor.putInt(KEY_VALIDATED_REPORT_VERSION, VALIDATED_REPORT_VERSION)
-        if (validHealth != null && validSource != null) {
-            val timestamp = System.currentTimeMillis()
-            editor.putFloat(KEY_PARSED_HEALTH, validHealth)
-                .putString(KEY_PARSED_HEALTH_SOURCE, validSource)
-                .putLong(KEY_PARSED_HEALTH_TIMESTAMP, timestamp)
-            val history = getHealthHistory().toMutableList()
-            history.add(SavedHealthReading(timestamp, validHealth, validSource))
-            editor.putString(
-                KEY_HEALTH_HISTORY,
-                JSONArray().apply {
-                    history.takeLast(50).forEach { reading ->
-                        put(
-                            JSONObject()
-                                .put("timestamp", reading.timestamp)
-                                .put("health", reading.healthPercent.toDouble())
-                                .put("source", reading.source)
-                        )
-                    }
-                }.toString()
-            )
+        if (reading != null && updatedHistory != null) {
+            editor.putFloat(KEY_PARSED_HEALTH, reading.healthPercent)
+                .putString(KEY_PARSED_HEALTH_SOURCE, reading.source)
+                .putString(KEY_PARSED_HEALTH_KIND, reading.sourceKind.name)
+                .putLong(KEY_PARSED_HEALTH_TIMESTAMP, reading.importedAt)
+            val measured = reading.measuredAt
+            if (measured != null) {
+                editor.putLong(KEY_PARSED_HEALTH_MEASURED_AT, measured)
+            } else {
+                editor.remove(KEY_PARSED_HEALTH_MEASURED_AT)
+            }
+            editor.putString(KEY_HEALTH_HISTORY, HealthHistory.encode(updatedHistory))
         } else {
             editor.remove(KEY_PARSED_HEALTH)
                 .remove(KEY_PARSED_HEALTH_SOURCE)
+                .remove(KEY_PARSED_HEALTH_KIND)
                 .remove(KEY_PARSED_HEALTH_TIMESTAMP)
+                .remove(KEY_PARSED_HEALTH_MEASURED_AT)
         }
         if (validCycles != null) editor.putInt(KEY_PARSED_CYCLES, validCycles) else editor.remove(KEY_PARSED_CYCLES)
         if (validDesign != null) editor.putInt(KEY_PARSED_DESIGN_MAH, validDesign) else editor.remove(KEY_PARSED_DESIGN_MAH)
         if (validAvailable != null) editor.putInt(KEY_PARSED_AVAILABLE_MAH, validAvailable) else editor.remove(KEY_PARSED_AVAILABLE_MAH)
         editor.apply()
+        return HealthHistory.AddOutcome.ADDED
+    }
+
+    fun getBatteryResetAt(): Long = prefs.getLong(KEY_RESET_AT, 0L)
+
+    /**
+     * Battery replaced / start over: forgets the old battery's imported health, history, cycles,
+     * capacities, learned charge samples and resistance reading. Report identities are kept
+     * with the history cut-off, so an old report cannot be re-imported as the new battery.
+     */
+    fun resetForNewBattery(now: Long = System.currentTimeMillis()) {
+        synchronized(CHARGE_SAMPLE_LOCK) {
+            prefs.edit()
+                .putLong(KEY_RESET_AT, now)
+                .remove(KEY_PARSED_HEALTH).remove(KEY_PARSED_HEALTH_SOURCE).remove(KEY_PARSED_HEALTH_KIND)
+                .remove(KEY_PARSED_HEALTH_TIMESTAMP).remove(KEY_PARSED_HEALTH_MEASURED_AT)
+                .remove(KEY_PARSED_CYCLES).remove(KEY_PARSED_DESIGN_MAH).remove(KEY_PARSED_AVAILABLE_MAH)
+                .remove(KEY_HEALTH_HISTORY)
+                .remove(KEY_CHARGE_SAMPLES).remove(KEY_LAST_CHARGE_SAMPLE_TIMESTAMP)
+                .remove(KEY_RESISTANCE).remove(KEY_CONFIDENCE).remove(KEY_TEST_TIMESTAMP)
+                .apply()
+        }
     }
 
     fun getSavedParsedHealth(): Float? {
@@ -125,25 +165,11 @@ class BatteryPreferences(context: Context) {
     fun getSavedParsedHealthTimestamp(): Long? =
         prefs.getLong(KEY_PARSED_HEALTH_TIMESTAMP, 0L).takeIf { it > 0L }
 
-    fun getHealthHistory(): List<SavedHealthReading> {
-        val encoded = prefs.getString(KEY_HEALTH_HISTORY, null) ?: return emptyList()
-        return try {
-            val array = JSONArray(encoded)
-            (0 until array.length()).mapNotNull { index ->
-                val item = array.getJSONObject(index)
-                val timestamp = item.optLong("timestamp", 0L)
-                val health = item.optDouble("health", Double.NaN).toFloat()
-                val source = item.optString("source").takeIf(String::isNotBlank)
-                if (timestamp > 0L && health in 1f..100f && source != null) {
-                    SavedHealthReading(timestamp, health, source)
-                } else {
-                    null
-                }
-            }
-        } catch (_: org.json.JSONException) {
-            emptyList()
-        }
-    }
+    fun getSavedParsedHealthMeasuredAt(): Long? =
+        prefs.getLong(KEY_PARSED_HEALTH_MEASURED_AT, 0L).takeIf { it > 0L }
+
+    fun getHealthHistory(): List<SavedHealthReading> =
+        HealthHistory.decode(prefs.getString(KEY_HEALTH_HISTORY, null))
 
     fun saveChargeSample(sample: BatteryChargeSample): List<BatteryChargeSample> {
         return synchronized(CHARGE_SAMPLE_LOCK) {
