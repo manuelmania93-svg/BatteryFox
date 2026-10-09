@@ -68,28 +68,29 @@ object BatteryTelemetryReader {
         )
     }
 
+    /**
+     * BatteryManager.BATTERY_PROPERTY_CURRENT_NOW is documented as microamps, so that is the only
+     * unit assumed. Non-zero magnitudes below 1 mA (under 1000 raw) would be implausibly tiny as
+     * microamps and are the signature of an OEM reporting mA instead; the unit is ambiguous there,
+     * so the value is reported as unavailable instead of guessed. Implausibly large values are
+     * rejected too.
+     */
     fun normalizeCurrent(rawCurrentUa: Int, status: Int): NormalizedBatteryCurrent? {
         if (rawCurrentUa == Int.MIN_VALUE) return null
 
         val rawMagnitude = abs(rawCurrentUa.toLong())
-        // A few OEMs expose mA despite Android's documented microamp unit.
-        val usesOemUnitHeuristic = rawMagnitude <= 10_000L
-        val magnitudeMa = if (usesOemUnitHeuristic) {
-            rawMagnitude.takeIf { it <= 20_000L }?.toInt()
-        } else {
-            (rawMagnitude / 1_000L).takeIf { it in 1L..20_000L }?.toInt()
-        } ?: return null
+        if (rawMagnitude in 1L until MIN_UNAMBIGUOUS_MICROAMPS) return null
+        val magnitudeMa = (rawMagnitude / 1_000L).takeIf { it <= MAX_PLAUSIBLE_MA }?.toInt()
+            ?: return null
         val signedMa = when (status) {
             BatteryManager.BATTERY_STATUS_CHARGING,
             BatteryManager.BATTERY_STATUS_FULL -> magnitudeMa
             BatteryManager.BATTERY_STATUS_DISCHARGING -> -magnitudeMa
             else -> if (rawCurrentUa < 0) -magnitudeMa else magnitudeMa
         }
-        val source = if (usesOemUnitHeuristic) {
-            "OEM raw-unit assumption"
-        } else {
-            "Android microamps converted to mA"
-        }
-        return NormalizedBatteryCurrent(signedMa, source)
+        return NormalizedBatteryCurrent(signedMa, "Android microamps converted to mA")
     }
+
+    private const val MIN_UNAMBIGUOUS_MICROAMPS = 1_000L
+    private const val MAX_PLAUSIBLE_MA = 20_000L
 }
