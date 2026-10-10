@@ -1,0 +1,28 @@
+name: Apply approved Paket 3 patch
+on:
+  push:
+    branches: [fix/paket3-safety-release-boundaries]
+    paths: [.github/workflows/apply-paket3.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify and apply public patch on approved base
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://api.github.com/repos/manuelmania93-svg/BatteryFox/issues/4/comments > /tmp/comments.json
+          jq -r 'sort_by(.id)[] | .body | select(startswith("BATTERYFOX_P3_PART_")) | split("\n")[1]' /tmp/comments.json | tr -d '\n' | base64 --decode > /tmp/patch
+          echo 'c246aed94540db3d508fece7451da2629eb1e433930e79c5f362092626108c08  /tmp/patch' | sha256sum -c
+          git config user.name manuelmania93-svg
+          git config user.email manuelmania93@gmail.com
+          git checkout --detach 03cf6311eac904cce15b996b5911dd3b31dd15df
+          git am /tmp/patch
+          test ! -e .github/workflows/apply-paket3.yml
+          git push --force-with-lease=refs/heads/fix/paket3-safety-release-boundaries:$EXPECTED_HEAD origin HEAD:refs/heads/fix/paket3-safety-release-boundaries
