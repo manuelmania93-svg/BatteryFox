@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.refreshTelemetry()
         viewModel.startForegroundSampling()
     }
 

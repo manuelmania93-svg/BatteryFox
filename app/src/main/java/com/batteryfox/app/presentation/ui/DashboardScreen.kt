@@ -247,10 +247,19 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                     val collectionMessage = if (state.chargeCounterAvailable) {
                         "BatteryFox has ${state.chargeSampleCount} local samples; it needs at least 3 consistent windows spanning 12% or more charge changes."
                     } else {
-                        "No usable charge-counter reading yet. Some phones or firmware versions do not expose this value to apps."
+                        if (state.chargeCounterHistoricallyAvailable) {
+                            "Charge counter unavailable now; retained historical samples are shown separately."
+                        } else {
+                            "No usable charge-counter reading now. Some phones do not expose it to apps."
+                        }
                     }
                     Text(collectionMessage, color = FoxTextSecondary, fontSize = 12.sp)
                 }
+                if (!state.chargeCounterAvailable && learned != null) {
+                    Text("Charge counter unavailable now; this estimate uses retained history.",
+                        color = FoxTextSecondary, fontSize = 11.sp)
+                }
+                Text(state.capacityCollectionMessage, color = FoxTextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     "Experimental capacity estimate from Android charge-counter history, not an OEM health reading. BatteryFox samples while this screen is open or the optional monitor is running; samples stay on this device.",

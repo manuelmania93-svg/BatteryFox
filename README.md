@@ -113,3 +113,27 @@ Compatibility reports are most useful when they include:
 Do not post raw bug reports publicly: they may include personal or identifying
 device information. Share only the minimum redacted battery lines needed to
 reproduce a parser case.
+
+### Live monitoring and capacity history (Paket 2)
+
+- The resumed screen listens to battery broadcasts and refreshes hardware properties every 5 seconds.
+  Pausing the Activity cancels the collection and unregisters its receiver. The optional foreground
+  service listens to broadcasts and also checks every 15 minutes while awake. Its notification has
+  a Stop action; the switch follows the service lifecycle rather than a requested/assumed state.
+- JSON history and capacity estimation run on IO, not the main/UI thread. Persistence is normally
+  capped at one sample per 15 minutes, with immediate charging/boot/session boundary samples.
+  History reads and writes both enforce 60 days / 6000 entries and reject future timestamps.
+- Samples carry charging state, temperature, boot count, process collection session and monotonic
+  time. Legacy samples remain in the retained sample count but lack context and do not form windows.
+  A process restart intentionally starts a new collection session, even within the same boot.
+- Windows cannot cross charging/boot/session changes, invalid readings, clock discontinuities,
+  counter reversals or implausible jumps. A missing live counter starts a new session before it returns. Adjacent gaps are limited to 2 hours, whole windows to
+  6 hours; temperatures must be 0-45 C. The existing 12% movement / 15-minute / 3-window minimum,
+  median/MAD filtering and experimental observed-range display remain. Rejection reasons are
+  displayed alongside the usable-window count. Observation dates refer to accepted windows only.
+- "Available now" is a fresh charge-counter read, never inferred from saved history. An estimate
+  can still use retained historical samples when the counter is currently unavailable.
+- No wake locks, exact alarms or new background permissions are used. Doze, sleep and OEM service
+  restrictions may delay sampling; the cadence is best effort, not a guarantee. Faster foreground
+  property reads are not a promise of zero battery cost. Real-device current behavior, notification
+  Stop, service termination and power cost still need on-device verification.
