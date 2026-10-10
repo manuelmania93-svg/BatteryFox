@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: fetch and apply patch
         run: |
           curl -fsSL "https://api.github.com/repos/${{ github.repository }}/issues/${{ inputs.issue }}/comments?per_page=100" -o /tmp/c.json
