@@ -3,6 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
+val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("1.1.0").get()
+require(releaseVersionCode > 1) { "releaseVersionCode must be greater than 1" }
+require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?").matches(releaseVersionName)) {
+    "releaseVersionName must be a semantic version"
+}
+val signingValues = listOf("BATTERYFOX_KEYSTORE_PATH", "BATTERYFOX_STORE_PASSWORD", "BATTERYFOX_KEY_ALIAS", "BATTERYFOX_KEY_PASSWORD")
+    .associateWith { System.getenv(it).orEmpty() }
+val hasReleaseSigning = signingValues.values.all { it.isNotBlank() }
+require(signingValues.values.all { it.isBlank() } || hasReleaseSigning) { "Release signing requires all four environment variables" }
+if (providers.gradleProperty("requireReleaseSigning").orNull == "true") {
+    require(hasReleaseSigning) { "Release signing secrets are missing" }
+}
+
 android {
     namespace = "com.batteryfox.app"
     compileSdk = 35
@@ -11,8 +25,8 @@ android {
         applicationId = "com.batteryfox.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -20,8 +34,19 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingValues.getValue("BATTERYFOX_KEYSTORE_PATH"))
+                storePassword = signingValues.getValue("BATTERYFOX_STORE_PASSWORD")
+                keyAlias = signingValues.getValue("BATTERYFOX_KEY_ALIAS")
+                keyPassword = signingValues.getValue("BATTERYFOX_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

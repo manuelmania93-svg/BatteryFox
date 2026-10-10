@@ -137,3 +137,21 @@ reproduce a parser case.
   restrictions may delay sampling; the cadence is best effort, not a guarantee. Faster foreground
   property reads are not a promise of zero battery cost. Real-device current behavior, notification
   Stop, service termination and power cost still need on-device verification.
+
+## Pulse safety, storage boundaries and releases
+
+The experimental pulse test can be cancelled. Fresh battery state is checked before each pulse, every 100 ms during its 1.8-second load, and after recovery. Charger connection, missing state, SoC outside 20-90%, temperature outside 10-45 C or Android thermal throttling aborts the test. CPU workers stop in a non-suspending finally block on cancellation/failure. No cancelled or failed result is saved. This is a best-effort app guard, not a hardware safety controller or a calibrated health test. On-device cancellation/temperature behavior and the button layout still require device verification.
+
+BatteryRepository is the storage boundary. ImportBatteryReport owns decoding and saving reports; AnalyzeCapacity owns estimation and progress explanations. ViewModel still coordinates Android URI access and UI state, but file parsing, report persistence and JSON history reads are on IO. Existing latest-import cancellation and history/reset locking remain. This is a focused boundary refactor, not a claim that every Android dependency has been removed from the ViewModel.
+
+CI runs unit tests, debug packaging and the minified unsigned release build. The unsigned APK is explicitly named as CI-only, not installable as a signed production update. Version defaults are code 2 / name 1.1.0; override with -PreleaseVersionCode and -PreleaseVersionName. Every shipped version must have a strictly larger code than the last shipped version.
+
+The manual Signed release build workflow only runs from main, uses the release environment, tests before packaging, verifies the APK signature and uploads a signed artifact. It does not publish a GitHub Release or ship automatically. Configure environment protection/reviewers and these secrets yourself before running it:
+- BATTERYFOX_KEYSTORE_BASE64: base64 of the existing private signing keystore
+- BATTERYFOX_STORE_PASSWORD
+- BATTERYFOX_KEY_ALIAS
+- BATTERYFOX_KEY_PASSWORD
+
+The private key exists only in the runner temp directory and is removed in an always cleanup step. Missing/partial configuration fails closed. Never commit keys/passwords. Reuse the original signing key to preserve update compatibility; do not replace it with a new key just to make CI green. No signing key was created or configured by this change, and production signing has not been validated.
+
+OEM matchers now require complete field lines. Samsung mSavedBatteryAsoc no longer matches the AOSP rule, and a generic cycle/capacity line cannot overwrite Samsung vendor attribution. The real public Samsung a20e unsupported-health excerpt has provenance in app/src/test/resources/oem/README.md; other OEM cases are synthetic regression fixtures. Unsupported health (-1) and Android health enum (2) are not health percentages. Red Magic/Qualcomm and newer One UI formats still need sanitized real device fixtures and expected results; this change does not claim universal OEM validation.

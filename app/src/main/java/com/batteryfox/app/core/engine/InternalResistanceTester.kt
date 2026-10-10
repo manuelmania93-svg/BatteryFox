@@ -27,69 +27,42 @@ class InternalResistanceTester(private val context: Context) {
     )
 
     suspend fun executeMultiSampleTest(): Result<MultiSampleResult> = withContext(Dispatchers.Default) {
-        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            ?: return@withContext Result.failure(IllegalStateException("Unable to read battery state."))
-
-        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        val soc = if (scale > 0) (level * 100) / scale else -1
-        val tempCelsius = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) / 10f
-
-        if (soc !in 20..90) {
-            return@withContext Result.failure(IllegalStateException("SoC must be between 20% and 90% (Current: $soc%)."))
-        }
-        if (tempCelsius !in 10.0f..45.0f) {
-            return@withContext Result.failure(IllegalStateException("Battery temp must be 10°C–45°C (Current: ${tempCelsius}°C)."))
-        }
-        val initialStatus = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        if (
-            initialStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
-            initialStatus == BatteryManager.BATTERY_STATUS_FULL ||
-            intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
-        ) {
-            return@withContext Result.failure(IllegalStateException("Disconnect the charger before running this experimental test."))
+        val runner = PulseTestRunner(::readSafety, ::startLoad)
+        try { runner.checkSafety() } catch (error: IllegalStateException) {
+            return@withContext Result.failure(error)
         }
 
         val rawSamples = mutableListOf<Float>()
 
         for (i in 1..3) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (powerManager.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE) {
-                    return@withContext Result.failure(IllegalStateException("Device throttled mid-test."))
-                }
+            try { runner.checkSafety() } catch (error: IllegalStateException) {
+                return@withContext Result.failure(error)
             }
-
             val vIdleMv = getBatteryVoltageMv()
                 ?: return@withContext Result.failure(IllegalStateException("Battery voltage is unavailable."))
             val iIdle = BatteryTelemetryReader.normalizeCurrent(
                 batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
-                initialStatus
+                BatteryManager.BATTERY_STATUS_DISCHARGING
             )
             if (iIdle == null) {
                 return@withContext Result.failure(IllegalStateException("Battery current is unavailable."))
             }
             delay(1000)
 
-            val isRunning = AtomicBoolean(true)
-            val cores = Runtime.getRuntime().availableProcessors().coerceAtMost(2)
-            val threads = List(cores) {
-                Thread {
-                    var x = 1.0001
-                    while (isRunning.get()) { x = x * x + Math.sin(x) }
-                }
-            }
-            threads.forEach { it.start() }
             val loadSample = try {
-                delay(1800)
-                getBatteryVoltageMv() to BatteryTelemetryReader.normalizeCurrent(
-                    batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
-                    initialStatus
-                )
-            } finally {
-                isRunning.set(false)
-                threads.forEach { it.join(1000) }
+                runner.pulse {
+                    getBatteryVoltageMv() to BatteryTelemetryReader.normalizeCurrent(
+                        batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+                        BatteryManager.BATTERY_STATUS_DISCHARGING
+                    )
+                }
+            } catch (error: IllegalStateException) {
+                return@withContext Result.failure(error)
             }
             delay(1000)
+            try { runner.checkSafety() } catch (error: IllegalStateException) {
+                return@withContext Result.failure(error)
+            }
             val vLoadMv = loadSample.first ?: continue
             val iLoad = loadSample.second ?: continue
             if (iLoad.source != iIdle.source) continue
@@ -124,6 +97,42 @@ class InternalResistanceTester(private val context: Context) {
                 sampleCount = cleanSamples.size
             )
         )
+    }
+
+    private fun readSafety(): PulseSafetyState {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
+        return PulseSafetyState(
+            soc = if (scale > 0 && level in 0..scale) level * 100 / scale else null,
+            temperatureC = temp.takeIf { it >= 0 }?.div(10f),
+            plugged = if (plugged < 0 || status !in 2..5) null else
+                plugged != 0 || status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL,
+            throttled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                powerManager.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+        )
+    }
+
+    private fun startLoad(): () -> Unit {
+        val running = AtomicBoolean(true)
+        val threads = List(Runtime.getRuntime().availableProcessors().coerceIn(1, 2)) {
+            Thread {
+                var x = 1.0001
+                while (running.get()) { x = x * x + Math.sin(x) }
+            }.apply { isDaemon = true; name = "BatteryFox-pulse" }
+        }
+        try { threads.forEach { it.start() } } catch (error: Throwable) {
+            running.set(false)
+            threads.forEach { it.join(1000) }
+            throw error
+        }
+        return {
+            running.set(false)
+            threads.forEach { it.join(1000) }
+        }
     }
 
     private fun getBatteryVoltageMv(): Float? {

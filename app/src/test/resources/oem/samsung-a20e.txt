@@ -1,0 +1,17 @@
+Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  Charge counter: 1728000
+  status: 2
+  health: 2
+  level: 57
+  scale: 100
+  voltage: 4058
+  temperature: 292
+  technology: Li-ion
+  current now: 1130
+health: vendor.samsung.hardware.health@2.0::ISehHealth@Proxy
+BatteryInfoBackUp
+  mSavedBatteryAsoc: -1
+  mSavedBatteryMaxTemp: 607
+  mSavedBatteryUsage: 17788
