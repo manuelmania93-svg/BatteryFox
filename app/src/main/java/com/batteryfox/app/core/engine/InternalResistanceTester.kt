@@ -94,10 +94,8 @@ class InternalResistanceTester(private val context: Context) {
             val iLoad = loadSample.second ?: continue
             if (iLoad.source != iIdle.source) continue
 
-            val deltaV = abs((vIdleMv - vLoadMv) / 1000f)
-            val deltaI = abs(iLoad.milliAmps - iIdle.milliAmps) / 1_000f
-            if (deltaI < 0.15f) continue
-            val rMilliOhms = (deltaV / deltaI) * 1000f
+            val rMilliOhms = resistanceMilliOhms(vIdleMv, vLoadMv, iIdle.milliAmps, iLoad.milliAmps)
+                ?: continue
 
             if (rMilliOhms in 15f..600f) {
                 rawSamples.add(rMilliOhms)
@@ -132,5 +130,19 @@ class InternalResistanceTester(private val context: Context) {
         val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
         return voltage.takeIf { it in 2_000..20_000 }?.toFloat()
+    }
+
+    companion object {
+        /**
+         * Resistance from a voltage sag between two current samples. Voltages are in mV and
+         * currents in mA (as produced by BatteryTelemetryReader.normalizeCurrent). Returns null
+         * when the current step is under 150 mA, too small to be meaningful.
+         */
+        fun resistanceMilliOhms(vIdleMv: Float, vLoadMv: Float, iIdleMa: Int, iLoadMa: Int): Float? {
+            val deltaV = abs(vIdleMv - vLoadMv) / 1000f
+            val deltaI = abs(iLoadMa - iIdleMa) / 1_000f
+            if (deltaI < 0.15f) return null
+            return (deltaV / deltaI) * 1000f
+        }
     }
 }

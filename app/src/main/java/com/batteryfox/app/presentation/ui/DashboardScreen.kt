@@ -16,6 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,10 +157,19 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                     )
                 }
-                state.healthMeasuredAt?.let { timestamp ->
+                val stampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+                if (state.estimatedHealthPercent != null) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Imported ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(timestamp))}",
+                        text = state.healthMeasuredAt?.let { "Measured ${stampFormat.format(Date(it))}" }
+                            ?: "Measurement time not stated in report",
+                        color = FoxTextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+                state.healthImportedAt?.let { timestamp ->
+                    Text(
+                        text = "Imported ${stampFormat.format(Date(timestamp))}",
                         color = FoxTextSecondary,
                         fontSize = 11.sp
                     )
@@ -165,18 +177,31 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             }
         }
 
-        if (state.healthHistory.size >= 2) {
-            val first = state.healthHistory.first()
-            val latest = state.healthHistory.last()
+        state.healthTrend?.let { trend ->
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val first = trend.first
+            val latest = trend.latest
+            val kind = if (latest.sourceKind == com.batteryfox.app.core.storage.HealthSourceKind.OEM_DIRECT) {
+                "device-reported"
+            } else {
+                "estimated"
+            }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Report trend: ${"%.1f".format(first.healthPercent)}% (${dateFormat.format(Date(first.timestamp))}) → " +
-                    "${"%.1f".format(latest.healthPercent)}% (${dateFormat.format(Date(latest.timestamp))})",
+                text = "Trend ($kind): ${"%.1f".format(first.healthPercent)}% (${dateFormat.format(Date(first.effectiveTime))}) → " +
+                    "${"%.1f".format(latest.healthPercent)}% (${dateFormat.format(Date(latest.effectiveTime))})",
                 color = FoxTextSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (trend.otherSeriesCount > 0) {
+                Text(
+                    text = "${trend.otherSeriesCount} other reading series (different source or device) are not compared.",
+                    color = FoxTextSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -413,6 +438,30 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
             fontSize = 11.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         )
+
+        var confirmReset by remember { mutableStateOf(false) }
+        TextButton(onClick = { confirmReset = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Battery replaced / reset history", fontSize = 12.sp)
+        }
+        if (confirmReset) {
+            AlertDialog(
+                onDismissRequest = { confirmReset = false },
+                title = { Text("Reset battery history?") },
+                text = {
+                    Text(
+                        "This clears imported health, cycle and capacity data, the health trend, learned capacity and the resistance reading. " +
+                            "Reports captured before now will be ignored if imported again."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmReset = false
+                        viewModel.resetForNewBattery()
+                    }) { Text("Reset") }
+                },
+                dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } }
+            )
+        }
 
         Spacer(modifier = Modifier.height(28.dp))
     }

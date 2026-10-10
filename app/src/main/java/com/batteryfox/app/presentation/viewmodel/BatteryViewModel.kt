@@ -21,7 +21,13 @@ import com.batteryfox.app.core.parser.UniversalBugReportParser
 import com.batteryfox.app.core.permissions.UsageStatsPermissionHelper
 import com.batteryfox.app.core.service.BatteryMonitorService
 import com.batteryfox.app.core.storage.BatteryPreferences
+import com.batteryfox.app.core.storage.HealthHistory
+import com.batteryfox.app.core.storage.HealthTrend
 import com.batteryfox.app.core.storage.SavedHealthReading
+import com.batteryfox.app.core.parser.ImportLimitExceededException
+import com.batteryfox.app.core.parser.LatestImportRunner
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
 import com.batteryfox.app.core.telemetry.BatteryChargeSampleRecorder
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +54,9 @@ data class DashboardState(
     val estimatedHealthPercent: Float? = null,
     val healthSource: String? = null,
     val healthMeasuredAt: Long? = null,
+    val healthImportedAt: Long? = null,
     val healthHistory: List<SavedHealthReading> = emptyList(),
+    val healthTrend: HealthTrend? = null,
     val learnedCapacity: BatteryCapacityEstimate? = null,
     val chargeSampleCount: Int = 0,
     val chargeCounterAvailable: Boolean = false,
@@ -81,13 +89,16 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     private val drainEngine = RetrospectiveDrainEngine(application)
     private val preferences = BatteryPreferences(application)
     private var foregroundSamplingJob: Job? = null
+    private val importRunner = LatestImportRunner<UniversalBugReportParser.ParseResult>(viewModelScope)
 
     private val _state = MutableStateFlow(
         DashboardState(
             estimatedHealthPercent = preferences.getSavedParsedHealth(),
             healthSource = preferences.getSavedParsedHealthSource(),
-            healthMeasuredAt = preferences.getSavedParsedHealthTimestamp(),
+            healthMeasuredAt = preferences.getSavedParsedHealthMeasuredAt(),
+            healthImportedAt = preferences.getSavedParsedHealthTimestamp(),
             healthHistory = preferences.getHealthHistory(),
+            healthTrend = HealthHistory.trend(preferences.getHealthHistory()),
             learnedCapacity = BatteryCapacityEstimator.estimate(preferences.getChargeSamples()),
             chargeSampleCount = preferences.getChargeSamples().size,
             chargeCounterAvailable = preferences.getChargeSamples().isNotEmpty(),
@@ -323,31 +334,67 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Imports a bug report. Only one import runs at a time: starting another cancels the previous
+     * one, and only the latest import may update state or storage.
+     */
     fun parseBugReportUri(uri: Uri) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isParsingBugReport = true, statusMessage = "Parsing dump...")
-            val context = getApplication<Application>()
-            try {
-                val parseResult = withContext(Dispatchers.IO) {
+        _state.value = _state.value.copy(isParsingBugReport = true, statusMessage = "Parsing dump...")
+        val context = getApplication<Application>()
+        importRunner.start(
+            work = {
+                withContext(Dispatchers.IO) {
+                    val job = coroutineContext[Job]
                     context.contentResolver.openInputStream(uri)?.use { stream ->
-                        bugReportParser.parseZip(stream)
+                        bugReportParser.parseZip(stream, checkCancelled = { job?.ensureActive() })
                     } ?: throw IllegalStateException("Unable to open bug report stream.")
                 }
+            },
+            onSuccess = { parseResult -> commitImport(parseResult) },
+            onFailure = { e ->
+                val reason = when (e) {
+                    is ImportLimitExceededException -> "File rejected: ${e.message}"
+                    else -> "Parse failed: ${e.localizedMessage ?: "Invalid file"}"
+                }
+                _state.value = _state.value.copy(isParsingBugReport = false, statusMessage = reason)
+            }
+        )
+    }
 
-                preferences.saveBugReportData(
-                    health = parseResult.report.healthPercent,
-                    cycles = parseResult.report.cycleCount,
-                    designMah = parseResult.report.designCapacityMah,
-                    availableMah = parseResult.report.currentCapacityMah,
-                    healthSource = parseResult.report.healthSource
-                )
-
+    private fun commitImport(parseResult: UniversalBugReportParser.ParseResult) {
+        val outcome = preferences.saveBugReportData(
+            health = parseResult.report.healthPercent,
+            cycles = parseResult.report.cycleCount,
+            designMah = parseResult.report.designCapacityMah,
+            availableMah = parseResult.report.currentCapacityMah,
+            healthSource = parseResult.report.healthSource,
+            reportId = parseResult.reportId,
+            deviceId = parseResult.reportDeviceId,
+            measuredAt = parseResult.measuredAtMs
+        )
+        when (outcome) {
+            HealthHistory.AddOutcome.DUPLICATE -> {
                 _state.value = _state.value.copy(
                     isParsingBugReport = false,
-                    estimatedHealthPercent = parseResult.report.healthPercent,
-                    healthSource = parseResult.report.healthSource,
-                    healthMeasuredAt = preferences.getSavedParsedHealthTimestamp(),
-                    healthHistory = preferences.getHealthHistory(),
+                    statusMessage = "This report was already imported; nothing changed."
+                )
+            }
+            HealthHistory.AddOutcome.BEFORE_RESET -> {
+                _state.value = _state.value.copy(
+                    isParsingBugReport = false,
+                    statusMessage = "This report was captured before the battery reset, so it was not imported."
+                )
+            }
+            HealthHistory.AddOutcome.ADDED -> {
+                val history = preferences.getHealthHistory()
+                _state.value = _state.value.copy(
+                    isParsingBugReport = false,
+                    estimatedHealthPercent = preferences.getSavedParsedHealth(),
+                    healthSource = preferences.getSavedParsedHealthSource(),
+                    healthMeasuredAt = preferences.getSavedParsedHealthMeasuredAt(),
+                    healthImportedAt = preferences.getSavedParsedHealthTimestamp(),
+                    healthHistory = history,
+                    healthTrend = HealthHistory.trend(history),
                     cycleCount = parseResult.report.cycleCount,
                     cycleCountSource = parseResult.report.cycleCount?.let { "Imported bug report" },
                     factoryDesignMah = parseResult.report.designCapacityMah,
@@ -358,14 +405,33 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                         "Report parsed, but no valid battery-health/capacity measurement was found"
                     }
                 )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isParsingBugReport = false,
-                    statusMessage = "Parse failed: ${e.localizedMessage ?: "Invalid file"}"
-                )
             }
-
         }
+    }
+
+    /** The user replaced the battery (or wants a clean start): drop the old battery's data. */
+    fun resetForNewBattery() {
+        importRunner.cancel()
+        preferences.resetForNewBattery()
+        _state.value = _state.value.copy(
+            isParsingBugReport = false,
+            estimatedHealthPercent = null,
+            healthSource = null,
+            healthMeasuredAt = null,
+            healthImportedAt = null,
+            healthHistory = emptyList(),
+            healthTrend = null,
+            cycleCount = null,
+            cycleCountSource = null,
+            factoryDesignMah = null,
+            currentAvailableMah = null,
+            learnedCapacity = null,
+            chargeSampleCount = 0,
+            chargeCounterAvailable = false,
+            measuredResistanceMilliOhms = null,
+            testConfidence = null,
+            statusMessage = "Battery history reset. Reports captured before now will be ignored."
+        )
     }
 
     fun launchOemMenu(): Boolean {

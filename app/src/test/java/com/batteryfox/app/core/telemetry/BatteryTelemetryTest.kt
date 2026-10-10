@@ -63,7 +63,7 @@ class BatteryTelemetryTest {
     }
 
     @Test
-    fun preservesSmallOemCurrentValuesButLabelsTheUnitAssumption() {
+    fun treatsAmbiguousSmallRawValuesAsUnavailableInsteadOfGuessingMilliamps() {
         val telemetry = BatteryTelemetryReader.fromRaw(
             level = 50,
             scale = 100,
@@ -73,7 +73,44 @@ class BatteryTelemetryTest {
             currentUa = 850
         )
 
-        assertEquals(-850, telemetry.currentMa)
-        assertEquals("OEM raw-unit assumption", telemetry.currentSource)
+        assertNull(telemetry.currentMa)
+        assertNull(telemetry.currentSource)
+        assertNull(telemetry.wattage)
+    }
+
+    @Test
+    fun valuesUpToTenThousandAreNoLongerReinterpretedAsMilliamps() {
+        val telemetry = BatteryTelemetryReader.fromRaw(
+            level = 50,
+            scale = 100,
+            rawVoltageMv = 4_000,
+            rawTemperatureTenthsC = 220,
+            status = BatteryManager.BATTERY_STATUS_DISCHARGING,
+            currentUa = 5_000
+        )
+
+        // Documented microamps: 5000 uA is 5 mA, not 5000 mA.
+        assertEquals(-5, telemetry.currentMa)
+        assertEquals("Android microamps converted to mA", telemetry.currentSource)
+        assertEquals(0.02f, telemetry.wattage!!, 0.0001f)
+    }
+
+    @Test
+    fun zeroCurrentIsStillValidAndImplausiblyLargeIsRejected() {
+        assertEquals(0, BatteryTelemetryReader.normalizeCurrent(0, BatteryManager.BATTERY_STATUS_FULL)!!.milliAmps)
+        assertNull(BatteryTelemetryReader.normalizeCurrent(25_000_000, BatteryManager.BATTERY_STATUS_CHARGING))
+    }
+
+    @Test
+    fun wattageUsesCorrectedUnits() {
+        val telemetry = BatteryTelemetryReader.fromRaw(
+            level = 60,
+            scale = 100,
+            rawVoltageMv = 4_000,
+            rawTemperatureTenthsC = 250,
+            status = BatteryManager.BATTERY_STATUS_CHARGING,
+            currentUa = 2_000_000
+        )
+        assertEquals(8f, telemetry.wattage!!, 0.001f)
     }
 }
