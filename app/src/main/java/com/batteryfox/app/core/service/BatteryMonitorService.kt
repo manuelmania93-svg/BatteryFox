@@ -15,25 +15,46 @@ import androidx.core.app.NotificationCompat
 import com.batteryfox.app.core.telemetry.BatteryChargeSampleRecorder
 import com.batteryfox.app.core.telemetry.BatteryTelemetryReader
 import com.batteryfox.app.presentation.MainActivity
+import com.batteryfox.app.core.telemetry.BatteryMonitoringPolicy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BatteryMonitorService : Service() {
+
+    companion object {
+        const val ACTION_STOP = "com.batteryfox.app.STOP_MONITOR"
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val updates = kotlinx.coroutines.channels.Channel<Intent>(kotlinx.coroutines.channels.Channel.CONFLATED)
 
     private val channelId = "battery_fox_monitor_channel"
     private val notificationId = 1001
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            BatteryChargeSampleRecorder.record(context, intent, includeStoredSamples = false)
-            val telemetry = BatteryTelemetryReader.read(context, intent)
-            val direction = when (telemetry.isCharging) {
-                true -> "Charging"
-                false -> "Discharging"
-                null -> "Current"
-            }
-            val currentSource = telemetry.currentSource?.let { " ($it)" } ?: ""
-            val current = telemetry.currentMa?.let { "$direction: ${it} mA$currentSource" } ?: "Current unavailable"
-            val watts = telemetry.wattage?.let { " | %.1f W".format(it) } ?: ""
-            val temp = telemetry.temperatureCelsius?.let { " | %.1f °C".format(it) } ?: ""
+            updates.trySend(intent)
+        }
+    }
+
+    private suspend fun updateBattery(intent: Intent) {
+        BatteryChargeSampleRecorder.record(this, intent, includeStoredSamples = false)
+        val telemetry = BatteryTelemetryReader.read(this, intent)
+        val direction = when (telemetry.isCharging) {
+            true -> "Charging"
+            false -> "Discharging"
+            null -> "Current"
+        }
+        val currentSource = telemetry.currentSource?.let { " ($it)" } ?: ""
+        val current = telemetry.currentMa?.let { "$direction: ${it} mA$currentSource" } ?: "Current unavailable"
+        val watts = telemetry.wattage?.let { " | %.1f W".format(it) } ?: ""
+        val temp = telemetry.temperatureCelsius?.let { " | %.1f °C".format(it) } ?: ""
+        withContext(Dispatchers.Main) {
             updateNotification(telemetry.levelPercent ?: 0, "$current$watts$temp")
         }
     }
@@ -43,9 +64,29 @@ class BatteryMonitorService : Service() {
         createNotificationChannel()
         startForeground(notificationId, buildNotification(0, "Initializing hardware telemetry..."))
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        scope.launch { for (intent in updates) updateBattery(intent) }
+        // Best effort while awake: deliberately no wake locks or exact wakeup alarms.
+        scope.launch {
+            while (true) {
+                delay(BatteryMonitoringPolicy.SAMPLE_INTERVAL_MS)
+                registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let { updates.trySend(it) }
+            }
+        }
+        MonitorState.started()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        MonitorState.stopped()
+        scope.cancel()
+        updates.close()
         unregisterReceiver(batteryReceiver)
         super.onDestroy()
     }
@@ -76,6 +117,10 @@ class BatteryMonitorService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val stopIntent = PendingIntent.getService(
+            this, 1, Intent(this, BatteryMonitorService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
         val title = if (soc > 0) "Battery Fox: $soc%" else "Battery Fox Active"
 
         return NotificationCompat.Builder(this, channelId)
@@ -83,6 +128,7 @@ class BatteryMonitorService : Service() {
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Stop", stopIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

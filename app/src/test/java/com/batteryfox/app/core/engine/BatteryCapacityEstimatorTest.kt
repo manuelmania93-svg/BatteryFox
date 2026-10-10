@@ -66,7 +66,7 @@ class BatteryCapacityEstimatorTest {
             sample(20, 55, 2_750_000),
             sample(40, 70, 3_500_000),
             sample(60, 85, 4_250_000),
-            BatteryChargeSample(80L * 24L * 60L * 60L * 1_000L, 100, 5_000_000)
+            sample(80L * 24L * 60L, 100, 5_000_000)
         )
 
         val estimate = BatteryCapacityEstimator.estimate(samples)!!
@@ -76,5 +76,5 @@ class BatteryCapacityEstimatorTest {
     }
 
     private fun sample(minutes: Long, percent: Int, chargeUah: Long) =
-        BatteryChargeSample(minutes * 60_000L + 1L, percent, chargeUah)
+        BatteryChargeSample(minutes * 60_000L + 1L, percent, chargeUah, true, 25f, "boot1", "session1", minutes * 60_000L + 1L)
 }
