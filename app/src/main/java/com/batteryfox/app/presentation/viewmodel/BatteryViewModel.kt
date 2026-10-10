@@ -85,7 +85,7 @@ data class DashboardState(
     val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
 )
 
-class BatteryViewModel(
+class BatteryViewModel @JvmOverloads constructor(
     application: Application,
     private val preferences: com.batteryfox.app.domain.repository.BatteryRepository = BatteryPreferences(application)
 ) : AndroidViewModel(application) {
