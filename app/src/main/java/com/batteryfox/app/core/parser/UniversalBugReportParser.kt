@@ -178,7 +178,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
         var asocHealth: Float? = null
         var designCap: Int? = null
         var estimatedCap: Int? = null
-        var vendorDetected = "UNKNOWN"
+        val vendors = linkedSetOf<String>()
 
         val matched = linkedSetOf<String>()
 
@@ -187,7 +187,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toFloatOrNull()
                 if (value != null && value in 1f..100f) {
                     asocHealth = value
-                    vendorDetected = "AOSP"
+                    vendors.add("AOSP")
                     matched.add("aospAsoc")
                 }
             }
@@ -195,7 +195,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toIntOrNull()
                 if (value != null && value in 0..100_000) {
                     cycleCount = value
-                    vendorDetected = "AOSP"
+                    vendors.add("AOSP")
                     matched.add("aospCycle")
                 }
             }
@@ -203,7 +203,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toIntOrNull()
                 if (value != null && value in 100..50_000) {
                     designCap = value
-                    vendorDetected = "AOSP"
+                    vendors.add("AOSP")
                     matched.add("aospDesign")
                 }
             }
@@ -211,7 +211,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toIntOrNull()
                 if (value != null && value in 100..50_000) {
                     estimatedCap = value
-                    vendorDetected = "AOSP"
+                    vendors.add("AOSP")
                     matched.add("aospEstimated")
                 }
             }
@@ -220,7 +220,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toFloatOrNull()
                 if (asocHealth == null && value != null && value in 1f..100f) {
                     asocHealth = value
-                    vendorDetected = "SAMSUNG_ONEUI"
+                    vendors.add("SAMSUNG_ONEUI")
                     matched.add("samsungAsoc")
                 }
             }
@@ -228,7 +228,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                 val value = it.groupValues[1].toIntOrNull()
                 if (value != null && value in 100..50_000) {
                     designCap = designCap ?: value
-                    vendorDetected = "SAMSUNG_ONEUI"
+                    vendors.add("SAMSUNG_ONEUI")
                     matched.add("samsungDesign")
                 }
             }
@@ -238,7 +238,7 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
                     val value = it.groupValues[1].toIntOrNull()
                     if (value != null && value in 0..100_000) {
                         cycleCount = value
-                        vendorDetected = "QUALCOMM_BMS"
+                        vendors.add("QUALCOMM_BMS")
                         matched.add("qcomCycle")
                     }
                 }
@@ -290,7 +290,12 @@ class UniversalBugReportParser(private val rules: MatcherRules = RemoteMatcherCo
             telemetry = ParseTelemetry(
                 matchedFields = matched.toList(),
                 missedFields = missed,
-                recognizedVendor = vendorDetected
+                recognizedVendor = when {
+                    "SAMSUNG_ONEUI" in vendors -> "SAMSUNG_ONEUI"
+                    "QUALCOMM_BMS" in vendors -> "QUALCOMM_BMS"
+                    "AOSP" in vendors -> "AOSP"
+                    else -> "UNKNOWN"
+                }
             )
         )
     }

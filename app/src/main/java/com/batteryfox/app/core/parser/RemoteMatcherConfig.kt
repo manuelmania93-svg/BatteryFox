@@ -16,13 +16,13 @@ object RemoteMatcherConfig {
 
     private const val DEFAULT_CONFIG_JSON = """
     {
-      "aospAsoc": "(?:mSavedBatteryAsoc|health_percent):\\s*(\\d+(?:\\.\\d+)?)",
-      "aospCycle": "Cycle count:\\s*(\\d+)",
-      "aospDesign": "Device battery capacity:\\s*(\\d+)\\s*mAh",
-      "aospEstimated": "Estimated battery capacity:\\s*(\\d+)\\s*mAh",
-      "samsungAsoc": "(?:mSecBatteryStateOfHealth|mSavedBatteryAsoc):\\s*(\\d+)",
-      "samsungDesign": "mDesignCapacity:\\s*(\\d+)",
-      "qcomCycle": "(?:bms_cycle_count|fg_cycle|cycle_count):\\s*(\\d+)"
+      "aospAsoc": "^\\s*health_percent:\\s*(\\d+(?:\\.\\d+)?)\\s*$",
+      "aospCycle": "^\\s*Cycle count:\\s*(\\d+)\\s*$",
+      "aospDesign": "^\\s*Device battery capacity:\\s*(\\d+)\\s*mAh\\s*$",
+      "aospEstimated": "^\\s*Estimated battery capacity:\\s*(\\d+)\\s*mAh\\s*$",
+      "samsungAsoc": "^\\s*(?:mSecBatteryStateOfHealth|mSavedBatteryAsoc):\\s*(\\d+)\\s*$",
+      "samsungDesign": "^\\s*mDesignCapacity:\\s*(\\d+)\\s*$",
+      "qcomCycle": "^\\s*(?:bms_cycle_count|fg_cycle|cycle_count):\\s*(\\d+)\\s*$"
     }
     """
 

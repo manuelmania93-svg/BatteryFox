@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.batteryfox.app.core.engine.BatteryChargeSample
 
-class BatteryPreferences(context: Context) {
+class BatteryPreferences(context: Context) : com.batteryfox.app.domain.repository.BatteryRepository {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("battery_fox_prefs", Context.MODE_PRIVATE)
 
@@ -30,7 +30,7 @@ class BatteryPreferences(context: Context) {
         private val CHARGE_SAMPLE_LOCK = Any()
     }
 
-    fun saveStressTestResult(resistanceMilliOhms: Float, confidence: String) {
+    override fun saveStressTestResult(resistanceMilliOhms: Float, confidence: String) {
         prefs.edit()
             .putFloat(KEY_RESISTANCE, resistanceMilliOhms)
             .putString(KEY_CONFIDENCE, confidence)
@@ -38,12 +38,12 @@ class BatteryPreferences(context: Context) {
             .apply()
     }
 
-    fun getSavedResistance(): Float? {
+    override fun getSavedResistance(): Float? {
         val res = prefs.getFloat(KEY_RESISTANCE, -1f)
         return if (res > 0f) res else null
     }
 
-    fun getSavedConfidence(): String? = prefs.getString(KEY_CONFIDENCE, null)
+    override fun getSavedConfidence(): String? = prefs.getString(KEY_CONFIDENCE, null)
 
     fun getSavedTestTimestamp(): Long = prefs.getLong(KEY_TEST_TIMESTAMP, 0L)
 
@@ -51,16 +51,16 @@ class BatteryPreferences(context: Context) {
      * Saves an imported report. Repeated imports of the same report, and reports captured before
      * the last battery reset, change nothing and are reported through the returned outcome.
      */
-    fun saveBugReportData(
+    override fun saveBugReportData(
         health: Float?,
         cycles: Int?,
         designMah: Int?,
         availableMah: Int?,
         healthSource: String?,
-        reportId: String? = null,
-        deviceId: String? = null,
-        measuredAt: Long? = null,
-        importedAt: Long = System.currentTimeMillis()
+        reportId: String?,
+        deviceId: String?,
+        measuredAt: Long?,
+        importedAt: Long
     ): HealthHistory.AddOutcome {
         val validHealth = health?.takeIf { it in 1f..100f }
         val validSource = healthSource?.takeIf(String::isNotBlank)
@@ -121,7 +121,7 @@ class BatteryPreferences(context: Context) {
      * capacities, learned charge samples and resistance reading. Report identities are kept
      * with the history cut-off, so an old report cannot be re-imported as the new battery.
      */
-    fun resetForNewBattery(now: Long = System.currentTimeMillis()) {
+    override fun resetForNewBattery(now: Long) {
         synchronized(CHARGE_SAMPLE_LOCK) {
             prefs.edit()
                 .putLong(KEY_RESET_AT, now)
@@ -135,39 +135,39 @@ class BatteryPreferences(context: Context) {
         }
     }
 
-    fun getSavedParsedHealth(): Float? {
+    override fun getSavedParsedHealth(): Float? {
         if (getSavedParsedHealthSource().isNullOrBlank() || getSavedParsedHealthTimestamp() == null) return null
         val h = prefs.getFloat(KEY_PARSED_HEALTH, -1f)
         return h.takeIf { it in 1f..100f }
     }
 
-    fun getSavedParsedCycles(): Int? {
+    override fun getSavedParsedCycles(): Int? {
         if (!hasValidatedReport()) return null
         val c = prefs.getInt(KEY_PARSED_CYCLES, -1)
         return c.takeIf { it in 0..100_000 }
     }
 
-    fun getSavedDesignMah(): Int? {
+    override fun getSavedDesignMah(): Int? {
         if (!hasValidatedReport()) return null
         val d = prefs.getInt(KEY_PARSED_DESIGN_MAH, -1)
         return d.takeIf { it in 100..50_000 }
     }
 
-    fun getSavedAvailableMah(): Int? {
+    override fun getSavedAvailableMah(): Int? {
         if (!hasValidatedReport()) return null
         val a = prefs.getInt(KEY_PARSED_AVAILABLE_MAH, -1)
         return a.takeIf { it in 100..50_000 }
     }
 
-    fun getSavedParsedHealthSource(): String? = prefs.getString(KEY_PARSED_HEALTH_SOURCE, null)
+    override fun getSavedParsedHealthSource(): String? = prefs.getString(KEY_PARSED_HEALTH_SOURCE, null)
 
-    fun getSavedParsedHealthTimestamp(): Long? =
+    override fun getSavedParsedHealthTimestamp(): Long? =
         prefs.getLong(KEY_PARSED_HEALTH_TIMESTAMP, 0L).takeIf { it > 0L }
 
-    fun getSavedParsedHealthMeasuredAt(): Long? =
+    override fun getSavedParsedHealthMeasuredAt(): Long? =
         prefs.getLong(KEY_PARSED_HEALTH_MEASURED_AT, 0L).takeIf { it > 0L }
 
-    fun getHealthHistory(): List<SavedHealthReading> =
+    override fun getHealthHistory(): List<SavedHealthReading> =
         HealthHistory.decode(prefs.getString(KEY_HEALTH_HISTORY, null))
 
     // Call charge-history operations on Dispatchers.IO; the lock covers UI/service read-modify-write.
@@ -186,7 +186,7 @@ class BatteryPreferences(context: Context) {
             retained
         }
 
-    fun getChargeSamples(now: Long = System.currentTimeMillis()): List<BatteryChargeSample> =
+    override fun getChargeSamples(now: Long): List<BatteryChargeSample> =
         synchronized(CHARGE_SAMPLE_LOCK) {
             ChargeSampleHistory.decode(prefs.getString(KEY_CHARGE_SAMPLES, null), now)
                 .filter { it.timestamp > getBatteryResetAt() }

@@ -403,14 +403,13 @@ fun DashboardScreen(viewModel: BatteryViewModel) {
 
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(
-                    onClick = { viewModel.runResistanceStressTest() },
-                    enabled = !state.isTestingResistance,
+                    onClick = { if (state.isTestingResistance) viewModel.cancelResistanceStressTest() else viewModel.runResistanceStressTest() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FoxAccentOrange)
                 ) {
                     Text(
-                        if (state.isTestingResistance) "Testing..." else "Run Experimental Test",
+                        if (state.isTestingResistance) "Cancel test" else "Run Experimental Test",
                         color = Color.Black,
                         fontWeight = FontWeight.Bold
                     )

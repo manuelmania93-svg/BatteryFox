@@ -85,16 +85,21 @@ data class DashboardState(
     val topHistoricalDrainers: List<AppDrainMetric> = emptyList()
 )
 
-class BatteryViewModel(application: Application) : AndroidViewModel(application) {
+class BatteryViewModel(
+    application: Application,
+    private val preferences: com.batteryfox.app.domain.repository.BatteryRepository = BatteryPreferences(application)
+) : AndroidViewModel(application) {
 
     private val resistanceTester = InternalResistanceTester(application)
     private val oemLauncher = OemDiagnosticLauncher(application)
     private val bugReportParser = UniversalBugReportParser()
     private val permissionHelper = UsageStatsPermissionHelper(application)
     private val drainEngine = RetrospectiveDrainEngine(application)
-    private val preferences = BatteryPreferences(application)
+    private val reportImport = com.batteryfox.app.domain.usecase.ImportBatteryReport(bugReportParser, preferences)
+    private val analyzeCapacity = com.batteryfox.app.domain.usecase.AnalyzeCapacity()
+    private var resistanceJob: Job? = null
     private var foregroundSamplingJob: Job? = null
-    private val importRunner = LatestImportRunner<UniversalBugReportParser.ParseResult>(viewModelScope)
+    private val importRunner = LatestImportRunner<Pair<UniversalBugReportParser.ParseResult, com.batteryfox.app.domain.usecase.ImportBatteryReport.Saved>>(viewModelScope)
 
     private val firstApi by lazy { getFirstApiLevel() }
     private val customOs by lazy { detectCustomOs() }
@@ -153,7 +158,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 lastHistoryReadAt = now
                 chargeSampleCollection.samples.ifEmpty { preferences.getChargeSamples() }
             } else null
-            val analysis = chargeSamples?.let { BatteryCapacityEstimator.analyze(it) }
+            val analysis = chargeSamples?.let { analyzeCapacity(it) }
 
             var cycles: Int? = preferences.getSavedParsedCycles()
             var cycleSource: String? = cycles?.let { "Imported bug report" }
@@ -201,7 +206,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 chargeSampleCount = chargeSamples?.size ?: current.chargeSampleCount,
                 chargeCounterAvailable = chargeSampleCollection.counterAvailable,
                 chargeCounterHistoricallyAvailable = chargeSamples?.isNotEmpty() ?: current.chargeCounterHistoricallyAvailable,
-                capacityCollectionMessage = analysis?.let { capacityMessage(it) } ?: current.capacityCollectionMessage,
+                capacityCollectionMessage = analysis?.let { analyzeCapacity.progress(it) } ?: current.capacityCollectionMessage,
                 factoryDesignMah = designMah,
                 currentAvailableMah = preferences.getSavedAvailableMah(),
                 batteryTechnology = tech,
@@ -217,12 +222,6 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun capacityMessage(analysis: CapacityAnalysis): String {
-        val reasons = analysis.rejections.entries.joinToString("; ") { "${it.key.explanation} (${it.value})" }
-        val progress = "${analysis.usableWindowCount} consistent windows; at least 3 needed."
-        return if (reasons.isEmpty()) progress else "$progress Skipped: $reasons"
-    }
-
     fun startForegroundSampling() {
         if (foregroundSamplingJob?.isActive == true) return
         lastHistoryReadAt = 0L
@@ -232,6 +231,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun stopForegroundSampling() {
+        cancelResistanceStressTest()
         foregroundSamplingJob?.cancel()
         foregroundSamplingJob = null
     }
@@ -330,27 +330,37 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun runResistanceStressTest() {
-        if (_state.value.isTestingResistance) return
-
-        viewModelScope.launch {
-            _state.update { it.copy(isTestingResistance = true, statusMessage = null) }
-            val result = resistanceTester.executeMultiSampleTest()
-            result.onSuccess { data ->
-                preferences.saveStressTestResult(data.finalResistanceMilliOhms, data.confidence.name)
-                _state.update { it.copy(
-                    isTestingResistance = false,
-                    measuredResistanceMilliOhms = data.finalResistanceMilliOhms,
-                    testConfidence = data.confidence.name,
-                    statusMessage = "Experimental resistance reading complete (${data.confidence.name} sample consistency)"
-                ) }
-            }.onFailure { error ->
-                _state.update { it.copy(
-                    isTestingResistance = false,
-                    statusMessage = error.message ?: "Stress test failed"
-                ) }
+        if (resistanceJob?.isActive == true) return
+        _state.update { it.copy(isTestingResistance = true, statusMessage = null) }
+        resistanceJob = viewModelScope.launch {
+            try {
+                resistanceTester.executeMultiSampleTest().onSuccess { data ->
+                    withContext(Dispatchers.IO) {
+                        sampleMutex.withLock {
+                            coroutineContext.ensureActive()
+                            preferences.saveStressTestResult(data.finalResistanceMilliOhms, data.confidence.name)
+                        }
+                    }
+                    _state.update { it.copy(
+                        measuredResistanceMilliOhms = data.finalResistanceMilliOhms,
+                        testConfidence = data.confidence.name,
+                        statusMessage = "Experimental resistance reading complete (${data.confidence.name} sample consistency)"
+                    ) }
+                }.onFailure { error ->
+                    _state.update { it.copy(statusMessage = error.message ?: "Stress test failed") }
+                }
+            } catch (cancelled: CancellationException) {
+                _state.update { it.copy(statusMessage = "Experimental test cancelled; no new result saved.") }
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update { it.copy(statusMessage = error.message ?: "Stress test failed") }
+            } finally {
+                _state.update { it.copy(isTestingResistance = false) }
             }
         }
     }
+
+    fun cancelResistanceStressTest() { resistanceJob?.cancel() }
 
     /**
      * Imports a bug report. Only one import runs at a time: starting another cancels the previous
@@ -364,11 +374,15 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 withContext(Dispatchers.IO) {
                     val job = coroutineContext[Job]
                     context.contentResolver.openInputStream(uri)?.use { stream ->
-                        bugReportParser.parseZip(stream, checkCancelled = { job?.ensureActive() })
+                        val parsed = reportImport.parse(stream, checkCancelled = { job?.ensureActive() })
+                        sampleMutex.withLock {
+                            job?.ensureActive()
+                            parsed to reportImport.save(parsed)
+                        }
                     } ?: throw IllegalStateException("Unable to open bug report stream.")
                 }
             },
-            onSuccess = { parseResult -> commitImport(parseResult) },
+            onSuccess = { (parsed, saved) -> commitImport(parsed, saved) },
             onFailure = { e ->
                 val reason = when (e) {
                     is ImportLimitExceededException -> "File rejected: ${e.message}"
@@ -379,17 +393,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    private fun commitImport(parseResult: UniversalBugReportParser.ParseResult) {
-        val outcome = preferences.saveBugReportData(
-            health = parseResult.report.healthPercent,
-            cycles = parseResult.report.cycleCount,
-            designMah = parseResult.report.designCapacityMah,
-            availableMah = parseResult.report.currentCapacityMah,
-            healthSource = parseResult.report.healthSource,
-            reportId = parseResult.reportId,
-            deviceId = parseResult.reportDeviceId,
-            measuredAt = parseResult.measuredAtMs
-        )
+    private fun commitImport(parseResult: UniversalBugReportParser.ParseResult,
+        saved: com.batteryfox.app.domain.usecase.ImportBatteryReport.Saved) {
+        val outcome = saved.outcome
         when (outcome) {
             HealthHistory.AddOutcome.DUPLICATE -> {
                 _state.update { it.copy(
@@ -404,13 +410,13 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 ) }
             }
             HealthHistory.AddOutcome.ADDED -> {
-                val history = preferences.getHealthHistory()
+                val history = saved.history
                 _state.update { it.copy(
                     isParsingBugReport = false,
-                    estimatedHealthPercent = preferences.getSavedParsedHealth(),
-                    healthSource = preferences.getSavedParsedHealthSource(),
-                    healthMeasuredAt = preferences.getSavedParsedHealthMeasuredAt(),
-                    healthImportedAt = preferences.getSavedParsedHealthTimestamp(),
+                    estimatedHealthPercent = saved.health,
+                    healthSource = saved.source,
+                    healthMeasuredAt = saved.measuredAt,
+                    healthImportedAt = saved.importedAt,
                     healthHistory = history,
                     healthTrend = HealthHistory.trend(history),
                     cycleCount = parseResult.report.cycleCount,
@@ -429,6 +435,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
     /** The user replaced the battery (or wants a clean start): drop the old battery's data. */
     fun resetForNewBattery() {
+        cancelResistanceStressTest()
         importRunner.cancel()
         viewModelScope.launch(Dispatchers.IO) {
             sampleMutex.withLock {
