@@ -20,6 +20,6 @@ jobs:
           sha256sum /tmp/p.patch
           git config user.name "manuelmania93-svg"
           git config user.email "manuelmania93@gmail.com"
-          git checkout -B "${{ inputs.branch }}"
+          git checkout -B "${{ inputs.branch }}" 327803be6250977c92d83710e13ce27c0ab67974
           git am /tmp/p.patch
           git push -f -u origin "${{ inputs.branch }}"
